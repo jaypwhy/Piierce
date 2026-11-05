@@ -179,6 +179,31 @@ const COMMANDS = [
         body: (flags) => parseJsonFlag(flags),
     },
     {
+        words: ["worldvolume", "solve"],
+        method: "POST",
+        service: "worldvolume",
+        action: "solve",
+        usage: "pc worldvolume solve [--body '<json>']",
+        summary: "Planned — the field-equation toolkit is still a skeleton.",
+        body: (flags) => parseJsonFlag(flags),
+    },
+    {
+        words: ["worldvolume", "results"],
+        method: "GET",
+        service: "worldvolume",
+        action: "results",
+        usage: "pc worldvolume results",
+        summary: "Planned — the solves that have been kept, once there are any.",
+    },
+    {
+        words: ["home-key"],
+        method: "GET",
+        service: "home-key",
+        action: "status",
+        usage: "pc home-key",
+        summary: "Planned — reserved; the repository is empty and has no actions yet.",
+    },
+    {
         words: ["acorn-tap", "deposit"],
         method: "POST",
         service: "acorn-tap",
@@ -188,7 +213,17 @@ const COMMANDS = [
         body: (flags) => parseJsonFlag(flags),
     },
 ];
-const SERVICE_NAMES = ["upayu", "art", "sip-drip", "ruhbi", "morbraii", "mission", "acorn-tap"];
+const SERVICE_NAMES = [
+    "upayu",
+    "art",
+    "sip-drip",
+    "ruhbi",
+    "morbraii",
+    "mission",
+    "acorn-tap",
+    "worldvolume",
+    "home-key",
+];
 function parseJsonFlag(flags) {
     const raw = flags.values.body;
     if (!raw)
@@ -246,9 +281,13 @@ function count(points) {
 function formatServices(data) {
     const lines = [`${data.count} services · ${data.live} live · ${data.planned} planned`, ""];
     for (const service of data.services) {
-        const actions = service.actions.length ? service.actions.join(", ") : "uses upayu";
-        lines.push(`${service.name.padEnd(11)} ${service.status.padEnd(8)} ${actions}`);
-        lines.push(`${" ".repeat(12)}${service.blurb}`);
+        const actions = service.actions.length
+            ? service.actions.join(", ")
+            : service.status === "planned"
+                ? "no actions yet"
+                : "uses upayu";
+        lines.push(`${service.name.padEnd(12)}${service.status.padEnd(9)}${actions}`);
+        lines.push(`${" ".repeat(21)}${service.blurb}`);
     }
     return lines.join("\n");
 }

@@ -28,6 +28,8 @@ export class PiierceError extends Error {
  */
 const ROUTES = {
     "art/list": "/api/v1/art/pieces",
+    // A reserved service answers at its base — there is no action to name.
+    "home-key/status": "/api/v1/home-key",
 };
 /** The path a service/action lands on, so the client and the CLI agree. */
 export function routePath(service, action) {
