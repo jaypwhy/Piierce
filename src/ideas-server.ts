@@ -1,5 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 
+import { keyMatches, refusal } from "~/dropkey";
+
 /* Server side of /ideas. Nothing here is ever bundled into the client: every
    handler body runs on the server, and node builtins are imported inside the
    handlers so the client bundle never sees them.
@@ -7,7 +9,11 @@ import { createServerFn } from "@tanstack/react-start";
    /ideas is a sibling of /drop, deliberately separate: /drop is for prototype
    files, /ideas is for ideas, and the two never share a folder. There is no
    database and no index file — the folder IS the index, so a file added by
-   hand (or by another route) shows up on the next read. */
+   hand (or by another route) shows up on the next read.
+
+   Both pages are opened by the same DropKey, read from one file on the server
+   (see ~/dropkey). No page can mint or change it, and every handler here
+   checks it before it touches the folder. */
 
 const DIR = "/home/team/shared/ideas-inbox";
 
@@ -98,11 +104,12 @@ function titleFromBody(body: string): string {
    the name is taken, so a collision picks the next suffix instead of clobbering
    an idea, and no reader ever sees a half-written file. */
 export const dropIdea = createServerFn({ method: "POST" })
-  .validator((d: { title: string; text: string }) => d)
+  .validator((d: { key: string; title: string; text: string }) => d)
   .handler(async ({ data }): Promise<Ok<{ name: string; size: number; title: string }> | Err> => {
     const fsp = await import("node:fs/promises");
     const path = await import("node:path");
     const crypto = await import("node:crypto");
+    if (!(await keyMatches(data?.key))) return refusal();
     await ensureDir();
 
     const title = String(data?.title ?? "")
@@ -171,19 +178,22 @@ export const dropIdea = createServerFn({ method: "POST" })
 
 /* --------------------------------------------------------------- listing -- */
 
-export const listIdeas = createServerFn({ method: "GET" }).handler(
-  async (): Promise<
-    Ok<{
-      files: { name: string; size: number; mtime: number; title: string }[];
-      used: number;
-      maxIdea: number;
-      free: number;
-      minFree: number;
-      dir: string;
-    }>
+export const listIdeas = createServerFn({ method: "POST" })
+  .validator((d: { key: string }) => d)
+  .handler(async ({ data }): Promise<
+    | Ok<{
+        files: { name: string; size: number; mtime: number; title: string }[];
+        used: number;
+        maxIdea: number;
+        free: number;
+        minFree: number;
+        dir: string;
+      }>
+    | Err
   > => {
     const fsp = await import("node:fs/promises");
     const path = await import("node:path");
+    if (!(await keyMatches(data?.key))) return refusal();
     await ensureDir();
     const files: { name: string; size: number; mtime: number; title: string }[] = [];
     let used = 0;
@@ -219,16 +229,16 @@ export const listIdeas = createServerFn({ method: "GET" }).handler(
       minFree: MIN_FREE,
       dir: DIR,
     };
-  },
-);
+  });
 
 /* -------------------------------------------------------------- download -- */
 
 export const downloadIdea = createServerFn({ method: "POST" })
-  .validator((d: { name: string }) => d)
+  .validator((d: { key: string; name: string }) => d)
   .handler(async ({ data }): Promise<Ok<{ name: string; b64: string }> | Err> => {
     const fsp = await import("node:fs/promises");
     const path = await import("node:path");
+    if (!(await keyMatches(data?.key))) return refusal();
     const name = String(data?.name || "");
     if (!name || name !== path.basename(name) || name.startsWith(".")) {
       return { ok: false, error: "That file name is not valid." };

@@ -2,6 +2,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 
 import { downloadIdea, dropIdea, listIdeas } from "~/ideas-server";
+import { DropKeyGate } from "~/dropkey-gate";
 
 export const Route = createFileRoute("/ideas")({
   component: IdeasPage,
@@ -46,6 +47,42 @@ function bytes(s: string): number {
 }
 
 function IdeasPage() {
+  /* The same gate as /drop, the same key: the ideas listing is what proves it. */
+  const verify = useCallback(async (candidate: string) => {
+    const r = await listIdeas({ data: { key: candidate } });
+    return r.ok;
+  }, []);
+
+  return (
+    <main className="mx-auto max-w-2xl px-5 py-10 text-slate-900">
+      <p className="text-xs font-semibold uppercase tracking-widest text-amber-700">
+        Internal — not linked from the site
+      </p>
+      <h1 className="mt-3 text-3xl font-semibold tracking-tight">Drop an idea</h1>
+      <p className="mt-3 leading-relaxed text-slate-600">
+        One idea, plain text, no forms to fill in. Whatever you type becomes one{" "}
+        <span className="font-mono text-sm">.txt</span> file in the team's ideas folder, stamped with
+        the time, so nothing is lost and nothing overwrites an earlier idea.
+      </p>
+      <p className="mt-2 leading-relaxed text-slate-600">
+        Both drops — this one and the files drop — ask for the DropKey first. Without it the page
+        shows nothing: no ideas, no titles, no counts. This is an internal team tool, not part of the
+        product, and it is deliberately left out of the static export.
+      </p>
+      <p className="mt-2 text-sm">
+        <Link to="/drop" className="inline-block py-3 underline underline-offset-4">
+          sending files instead? → /drop
+        </Link>
+      </p>
+
+      <DropKeyGate verify={verify}>
+        {(dropKey) => <IdeasWorkspace dropKey={dropKey} />}
+      </DropKeyGate>
+    </main>
+  );
+}
+
+function IdeasWorkspace({ dropKey }: { dropKey: string }) {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [listing, setListing] = useState<Listing | null>(null);
@@ -55,9 +92,10 @@ function IdeasPage() {
   });
 
   const refresh = useCallback(async () => {
-    const r = await listIdeas();
+    const r = await listIdeas({ data: { key: dropKey } });
     if (r.ok) setListing(r);
-  }, []);
+    else setStatus({ kind: "bad", text: r.error });
+  }, [dropKey]);
 
   useEffect(() => {
     void refresh();
@@ -65,7 +103,7 @@ function IdeasPage() {
 
   async function drop() {
     setStatus({ kind: "busy", text: "Dropping the idea…" });
-    const r = await dropIdea({ data: { title, text } });
+    const r = await dropIdea({ data: { key: dropKey, title, text } });
     if (!r.ok) {
       setStatus({ kind: "bad", text: r.error });
       void refresh();
@@ -82,7 +120,7 @@ function IdeasPage() {
 
   async function getIdea(name: string) {
     setStatus({ kind: "busy", text: `Fetching ${name}…` });
-    const r = await downloadIdea({ data: { name } });
+    const r = await downloadIdea({ data: { key: dropKey, name } });
     if (!r.ok) {
       setStatus({ kind: "bad", text: r.error });
       return;
@@ -103,22 +141,7 @@ function IdeasPage() {
   const over = size > 64 * 1024;
 
   return (
-    <main className="mx-auto max-w-2xl px-5 py-10 text-slate-900">
-      <p className="text-xs font-semibold uppercase tracking-widest text-amber-700">
-        Internal — not linked from the site
-      </p>
-      <h1 className="mt-3 text-3xl font-semibold tracking-tight">Drop an idea</h1>
-      <p className="mt-3 leading-relaxed text-slate-600">
-        One idea, plain text, no forms to fill in. Whatever you type becomes one{" "}
-        <span className="font-mono text-sm">.txt</span> file in the team's ideas folder, stamped with
-        the time, so nothing is lost and nothing overwrites an earlier idea.
-      </p>
-      <p className="mt-2 text-sm">
-        <Link to="/drop" className="inline-block py-3 underline underline-offset-4">
-          sending files instead? → /drop
-        </Link>
-      </p>
-
+    <>
       {/* ------------------------------------------------------------ form */}
       <section className="mt-6">
         <label htmlFor="idea-title" className="text-sm font-semibold">
@@ -130,7 +153,7 @@ function IdeasPage() {
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Tactile fret strip"
           autoComplete="off"
-          className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-3 text-base"
+          className="mt-2 min-h-11 w-full min-w-0 rounded-lg border border-slate-300 px-3 py-3 text-base"
         />
 
         <label htmlFor="idea-text" className="mt-5 block text-sm font-semibold">
@@ -176,7 +199,7 @@ function IdeasPage() {
 
       {/* --------------------------------------------------------- listing */}
       <section className="mt-10">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-sm font-semibold">
             Ideas dropped{listing ? ` (${listing.files.length})` : ""}
           </h2>
@@ -227,11 +250,12 @@ function IdeasPage() {
 
         <p className="mt-4 text-xs leading-relaxed text-slate-500">
           Ideas land in <span className="font-mono">/home/team/shared/ideas-inbox/</span> on the
-          team's machine — one <span className="font-mono">.txt</span> per idea. This is an internal
-          team tool, not part of the product: there is no login yet, so anyone with the URL can read
-          what is here, and it is deliberately left out of the static export.
+          team's machine — one <span className="font-mono">.txt</span> per idea. The list and the
+          files are behind the DropKey: without it this page shows nothing and the server refuses
+          every request. It is an internal team tool, not part of the product, and deliberately left
+          out of the static export.
         </p>
       </section>
-    </main>
+    </>
   );
 }

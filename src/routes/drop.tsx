@@ -7,8 +7,8 @@ import {
   downloadFile,
   finishUpload,
   listFiles,
-  mintDropKey,
 } from "~/drop-server";
+import { DropKeyGate } from "~/dropkey-gate";
 
 export const Route = createFileRoute("/drop")({
   component: DropPage,
@@ -20,7 +20,6 @@ export const Route = createFileRoute("/drop")({
   }),
 });
 
-const KEY_STORE = "morbrai.dropkey";
 const CHUNK = 3 * 1024 * 1024;
 
 type Entry = { name: string; size: number; mtime: number };
@@ -31,7 +30,6 @@ type Listing = {
   maxFolder: number;
   free: number;
   minFree: number;
-  hasKey: boolean;
 };
 
 function fmt(n: number): string {
@@ -47,9 +45,43 @@ function when(ms: number): string {
 }
 
 function DropPage() {
-  const [key, setKey] = useState("");
-  const [keyDraft, setKeyDraft] = useState("");
-  const [minted, setMinted] = useState("");
+  /* The listing call doubles as the check: if the server answers with the
+     folder, the key was right. Nothing here knows the key. */
+  const verify = useCallback(async (candidate: string) => {
+    const r = await listFiles({ data: { key: candidate } });
+    return r.ok;
+  }, []);
+
+  return (
+    <main className="mx-auto max-w-2xl px-5 py-10 text-slate-900">
+      <p className="text-xs font-semibold uppercase tracking-widest text-amber-700">
+        Internal — not linked from the site
+      </p>
+      <h1 className="mt-3 text-3xl font-semibold tracking-tight">Send files to the team</h1>
+      <p className="mt-3 leading-relaxed text-slate-600">
+        Both directions. You drop a file here and it lands in the team's uploads folder; the team
+        leaves files in the same folder and you download them below. Any file type, up to 20 MB per
+        file.
+      </p>
+      <p className="mt-2 leading-relaxed text-slate-600">
+        Both drops — this one and the ideas drop — ask for the DropKey first. Without it the page
+        shows nothing: no listing, no counts, no file names. This is an internal team tool, not part
+        of the product, and it is deliberately left out of the static export.
+      </p>
+      <p className="mt-2 text-sm">
+        <Link to="/ideas" className="inline-block py-3 underline underline-offset-4">
+          dropping an idea instead? → /ideas
+        </Link>
+      </p>
+
+      <DropKeyGate verify={verify}>
+        {(dropKey) => <DropWorkspace dropKey={dropKey} />}
+      </DropKeyGate>
+    </main>
+  );
+}
+
+function DropWorkspace({ dropKey }: { dropKey: string }) {
   const [listing, setListing] = useState<Listing | null>(null);
   const [status, setStatus] = useState<{ kind: "idle" | "busy" | "ok" | "bad"; text: string }>({
     kind: "idle",
@@ -59,53 +91,18 @@ function DropPage() {
   const [pasteText, setPasteText] = useState("");
   const fileInput = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(KEY_STORE) || "";
-      setKey(saved);
-      setKeyDraft(saved);
-    } catch {
-      /* private mode */
-    }
-  }, []);
-
   const refresh = useCallback(async () => {
-    const r = await listFiles();
+    const r = await listFiles({ data: { key: dropKey } });
     if (r.ok) setListing(r);
-  }, []);
+    else setStatus({ kind: "bad", text: r.error });
+  }, [dropKey]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
-  const rememberKey = (k: string) => {
-    setKey(k);
-    setKeyDraft(k);
-    try {
-      localStorage.setItem(KEY_STORE, k);
-    } catch {
-      /* private mode */
-    }
-  };
-
-  async function mint() {
-    setStatus({ kind: "busy", text: "Minting a DropKey…" });
-    const r = await mintDropKey();
-    if (!r.ok) {
-      setStatus({ kind: "bad", text: "Could not mint a key. Try again." });
-      return;
-    }
-    rememberKey(r.key);
-    setMinted(r.key);
-    setStatus({
-      kind: "ok",
-      text: "New DropKey made. It is shown once above — the old one stopped working.",
-    });
-    void refresh();
-  }
-
   async function sendOne(file: File): Promise<string | null> {
-    const b = await beginUpload({ data: { key, name: file.name, size: file.size } });
+    const b = await beginUpload({ data: { key: dropKey, name: file.name, size: file.size } });
     if (!b.ok) return b.error;
     let offset = 0;
     while (offset < file.size) {
@@ -119,7 +116,7 @@ function DropPage() {
         fr.onerror = () => reject(fr.error);
         fr.readAsDataURL(slice);
       });
-      const a = await appendChunk({ data: { id: b.id, b64 } });
+      const a = await appendChunk({ data: { key: dropKey, id: b.id, b64 } });
       if (!a.ok) return a.error;
       offset += CHUNK;
       setStatus({
@@ -127,19 +124,12 @@ function DropPage() {
         text: `Sending ${file.name} — ${Math.min(100, Math.round((offset / file.size) * 100))}%`,
       });
     }
-    const f = await finishUpload({ data: { id: b.id } });
+    const f = await finishUpload({ data: { key: dropKey, id: b.id } });
     return f.ok ? null : f.error;
   }
 
   async function sendFiles(files: File[]) {
     if (!files.length) return;
-    if (!key.trim()) {
-      setStatus({
-        kind: "bad",
-        text: "No DropKey set. Paste the current key, or mint a new one.",
-      });
-      return;
-    }
     const done: string[] = [];
     for (const file of files) {
       setStatus({ kind: "busy", text: `Sending ${file.name}…` });
@@ -169,7 +159,7 @@ function DropPage() {
 
   async function getFile(name: string) {
     setStatus({ kind: "busy", text: `Fetching ${name}…` });
-    const r = await downloadFile({ data: { name } });
+    const r = await downloadFile({ data: { key: dropKey, name } });
     if (!r.ok) {
       setStatus({ kind: "bad", text: r.error });
       return;
@@ -187,77 +177,7 @@ function DropPage() {
   }
 
   return (
-    <main className="mx-auto max-w-2xl px-5 py-10 text-slate-900">
-      <p className="text-xs font-semibold uppercase tracking-widest text-amber-700">
-        Internal — not linked from the site
-      </p>
-      <h1 className="mt-3 text-3xl font-semibold tracking-tight">Send files to the team</h1>
-      <p className="mt-3 leading-relaxed text-slate-600">
-        Both directions. You drop a file here and it lands in the team's uploads folder; the team
-        leaves files in the same folder and you download them below. Any file type, up to 20 MB per
-        file. Uploads need your DropKey.
-      </p>
-      <p className="mt-2 text-sm">
-        <Link to="/ideas" className="inline-block py-3 underline underline-offset-4">
-          dropping an idea instead? → /ideas
-        </Link>
-      </p>
-
-      {/* ---------------------------------------------------------- DropKey */}
-      <section className="mt-8 rounded-2xl border border-slate-200 p-5">
-        <h2 className="text-sm font-semibold">Your DropKey</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Minted here and kept on the server. Mint a new one any time — the old key stops working
-          immediately.
-        </p>
-
-        {minted ? (
-          <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
-              New DropKey — shown once
-            </p>
-            <p className="mt-1 font-mono text-lg break-all">{minted}</p>
-            <p className="mt-1 text-xs text-amber-800">
-              It is saved in this browser already. Copy it somewhere safe.
-            </p>
-          </div>
-        ) : null}
-
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <input
-            value={keyDraft}
-            onChange={(e) => setKeyDraft(e.target.value)}
-            onBlur={() => rememberKey(keyDraft.trim())}
-            placeholder="DROP-XXXX-XXXX-XXXX"
-            className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm"
-          />
-          <button
-            type="button"
-            onClick={() => {
-              rememberKey(keyDraft.trim());
-              setStatus({ kind: "ok", text: "Key saved in this browser." });
-            }}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium"
-          >
-            Save key
-          </button>
-          <button
-            type="button"
-            onClick={() => void mint()}
-            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white"
-          >
-            Mint a new DropKey
-          </button>
-        </div>
-        <p className="mt-2 text-xs text-slate-500">
-          {listing
-            ? listing.hasKey
-              ? "A key exists on the server. Without the current one, uploads are refused."
-              : "No key exists yet — mint one to start uploading."
-            : "Checking the server…"}
-        </p>
-      </section>
-
+    <>
       {/* ---------------------------------------------------------- upload */}
       <section className="mt-6">
         <div
@@ -280,7 +200,7 @@ function DropPage() {
           <button
             type="button"
             onClick={() => fileInput.current?.click()}
-            className="mt-4 rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-medium"
+            className="mt-4 min-h-11 rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-medium"
           >
             …or pick files
           </button>
@@ -303,16 +223,16 @@ function DropPage() {
             onChange={(e) => setPasteText(e.target.value)}
             rows={5}
             placeholder="Paste anything — notes, a transcript, an error message"
-            className="mt-2 w-full rounded-lg border border-slate-300 p-3 text-sm"
+            className="mt-2 w-full rounded-lg border border-slate-300 p-3 text-base"
           />
-          <div className="mt-2 flex items-center justify-between gap-3">
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
             <span className="text-xs text-slate-500">
               Saved as a .txt file in the folder, stamped with the time.
             </span>
             <button
               type="button"
               onClick={() => void sendPaste()}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white"
+              className="min-h-11 rounded-lg bg-slate-900 px-4 py-3 text-sm font-medium text-white"
             >
               Save this text
             </button>
@@ -321,6 +241,7 @@ function DropPage() {
 
         {status.text ? (
           <p
+            role="status"
             className={`mt-4 rounded-xl px-4 py-3 text-sm ${
               status.kind === "bad"
                 ? "bg-rose-50 text-rose-800"
@@ -334,16 +255,16 @@ function DropPage() {
         ) : null}
       </section>
 
-      {/* ---------------------------------------------------------- listing */}
+      {/* --------------------------------------------------------- listing */}
       <section className="mt-8">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-sm font-semibold">
             In the folder{listing ? ` (${listing.files.length})` : ""}
           </h2>
           <button
             type="button"
             onClick={() => void refresh()}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm"
+            className="min-h-11 rounded-lg border border-slate-300 px-4 py-3 text-sm"
           >
             refresh
           </button>
@@ -371,19 +292,19 @@ function DropPage() {
               <button
                 type="button"
                 onClick={() => void getFile(f.name)}
-                className="shrink-0 rounded-lg border border-slate-300 px-4 py-2 text-sm"
+                className="min-h-11 shrink-0 rounded-lg border border-slate-300 px-4 py-3 text-sm"
               >
                 download
               </button>
             </li>
           ))}
         </ul>
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-3 text-xs leading-relaxed text-slate-500">
           Files land in <span className="font-mono">/home/team/shared/uploads/</span> on the team's
-          machine. Anything here can be downloaded by anyone who reaches this page, so do not leave
-          anything private in it.
+          machine. The listing and the files are behind the DropKey: without it this page shows
+          nothing and the server refuses every request.
         </p>
       </section>
-    </main>
+    </>
   );
 }

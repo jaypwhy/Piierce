@@ -1,12 +1,18 @@
 import { createServerFn } from "@tanstack/react-start";
 
+import { keyMatches, refusal } from "~/dropkey";
+
 /* Server side of /drop. Nothing here is ever bundled into the client: every
    handler body runs on the server, and node builtins are imported inside the
-   handlers so the client bundle never sees them. */
+   handlers so the client bundle never sees them.
+
+   Every handler below needs the DropKey, and checks it itself — the screen
+   hides the page until the key is right, but the screen is not the gate. The
+   key lives in one file on the server (see ~/dropkey); this page cannot mint
+   one, and an upload id on its own gets you nothing. */
 
 const DIR = "/home/team/shared/uploads";
 const TMP = DIR + "/.tmp";
-const KEYFILE = DIR + "/.dropkey";
 
 const MAX_FILE = 20 * 1024 * 1024; // 20 MB per file
 const MAX_FOLDER = 100 * 1024 * 1024; // 100 MB for the whole folder
@@ -61,15 +67,6 @@ async function freeBytes(): Promise<number> {
   });
 }
 
-async function readKey(): Promise<string> {
-  const fsp = await import("node:fs/promises");
-  try {
-    return (await fsp.readFile(KEYFILE, "utf8")).trim();
-  } catch {
-    return "";
-  }
-}
-
 function sanitiseName(raw: string): string {
   let name = String(raw || "").split(/[\\/]/).pop() || "";
   name = name.replace(/[\u0000-\u001f\u007f]/g, "").replace(/[:*?"<>|]/g, "_").trim();
@@ -101,24 +98,6 @@ async function uniqueName(base: string): Promise<string> {
   return `${stem}-${Date.now()}${ext}`;
 }
 
-/* ---------------------------------------------------------------- key ---- */
-
-export const mintDropKey = createServerFn({ method: "POST" }).handler(
-  async (): Promise<Ok<{ key: string }>> => {
-    const fsp = await import("node:fs/promises");
-    const crypto = await import("node:crypto");
-    await ensureDir();
-    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    const pick = (n: number) =>
-      Array.from(crypto.randomBytes(n))
-        .map((b) => alphabet[b % alphabet.length])
-        .join("");
-    const key = `DROP-${pick(4)}-${pick(4)}-${pick(4)}`;
-    await fsp.writeFile(KEYFILE, key + "\n", { mode: 0o600 });
-    return { ok: true, key };
-  },
-);
-
 /* -------------------------------------------------------------- uploads -- */
 
 export const beginUpload = createServerFn({ method: "POST" })
@@ -127,18 +106,8 @@ export const beginUpload = createServerFn({ method: "POST" })
     const fsp = await import("node:fs/promises");
     const path = await import("node:path");
     const crypto = await import("node:crypto");
+    if (!(await keyMatches(data?.key))) return refusal();
     await ensureDir();
-
-    const stored = await readKey();
-    if (!stored) {
-      return { ok: false, error: "No DropKey exists yet. Mint one on this page first." };
-    }
-    if (!data?.key || data.key.trim().toUpperCase() !== stored.toUpperCase()) {
-      return {
-        ok: false,
-        error: "That DropKey is not the current one. Paste the current key, or mint a new one.",
-      };
-    }
 
     const size = Number(data.size);
     if (!Number.isFinite(size) || size <= 0) {
@@ -177,10 +146,14 @@ export const beginUpload = createServerFn({ method: "POST" })
   });
 
 export const appendChunk = createServerFn({ method: "POST" })
-  .validator((d: { id: string; b64: string }) => d)
+  .validator((d: { key: string; id: string; b64: string }) => d)
   .handler(async ({ data }): Promise<Ok<{ received: number }> | Err> => {
     const fsp = await import("node:fs/promises");
     const path = await import("node:path");
+    /* The key is checked before the id is even looked at: an upload id that
+       leaks (a screenshot, a log, a shared link) is no longer enough to append
+       to somebody else's file. */
+    if (!(await keyMatches(data?.key))) return refusal();
     if (!/^[a-f0-9]{16}$/.test(String(data?.id || ""))) {
       return { ok: false, error: "That upload session is not valid." };
     }
@@ -199,10 +172,11 @@ export const appendChunk = createServerFn({ method: "POST" })
   });
 
 export const finishUpload = createServerFn({ method: "POST" })
-  .validator((d: { id: string }) => d)
+  .validator((d: { key: string; id: string }) => d)
   .handler(async ({ data }): Promise<Ok<{ name: string; size: number }> | Err> => {
     const fsp = await import("node:fs/promises");
     const path = await import("node:path");
+    if (!(await keyMatches(data?.key))) return refusal();
     if (!/^[a-f0-9]{16}$/.test(String(data?.id || ""))) {
       return { ok: false, error: "That upload session is not valid." };
     }
@@ -235,20 +209,22 @@ export const finishUpload = createServerFn({ method: "POST" })
 
 /* --------------------------------------------------------------- listing -- */
 
-export const listFiles = createServerFn({ method: "GET" }).handler(
-  async (): Promise<
-    Ok<{
-      files: { name: string; size: number; mtime: number }[];
-      used: number;
-      maxFile: number;
-      maxFolder: number;
-      free: number;
-      minFree: number;
-      hasKey: boolean;
-    }>
+export const listFiles = createServerFn({ method: "POST" })
+  .validator((d: { key: string }) => d)
+  .handler(async ({ data }): Promise<
+    | Ok<{
+        files: { name: string; size: number; mtime: number }[];
+        used: number;
+        maxFile: number;
+        maxFolder: number;
+        free: number;
+        minFree: number;
+      }>
+    | Err
   > => {
     const fsp = await import("node:fs/promises");
     const path = await import("node:path");
+    if (!(await keyMatches(data?.key))) return refusal();
     await ensureDir();
     const files: { name: string; size: number; mtime: number }[] = [];
     let used = 0;
@@ -275,18 +251,17 @@ export const listFiles = createServerFn({ method: "GET" }).handler(
       maxFolder: MAX_FOLDER,
       free: await freeBytes(),
       minFree: MIN_FREE,
-      hasKey: (await readKey()) !== "",
     };
-  },
-);
+  });
 
 /* -------------------------------------------------------------- download -- */
 
 export const downloadFile = createServerFn({ method: "POST" })
-  .validator((d: { name: string }) => d)
+  .validator((d: { key: string; name: string }) => d)
   .handler(async ({ data }): Promise<Ok<{ name: string; b64: string }> | Err> => {
     const fsp = await import("node:fs/promises");
     const path = await import("node:path");
+    if (!(await keyMatches(data?.key))) return refusal();
     const name = String(data?.name || "");
     if (!name || name !== path.basename(name) || name.startsWith(".")) {
       return { ok: false, error: "That file name is not valid." };
