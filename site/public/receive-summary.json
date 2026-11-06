@@ -1,0 +1,41 @@
+{
+  "what": "Morbraii listening prototype — how much of the receive test set has actually been run",
+  "source": "receive-lab/results.json — 19 rows measured with headless Chromium using a test WAV as the fake microphone, and case 17 measured through the page's own decoder-simulation path",
+  "measurementDate": "2026-10-19",
+  "updated": "2026-10-19",
+  "updatedBy": "engineer (case 17 re-run after the flush-window fix)",
+  "casesTotal": 20,
+  "casesRun": 19,
+  "casesDecoded": 17,
+  "casesRefused": 2,
+  "casesNotRun": 0,
+  "casesInconclusive": 1,
+  "lettersCorrect": 48,
+  "lettersScored": 59,
+  "exactStrings": 12,
+  "stringsScored": 19,
+  "casesCorrect": 12,
+  "maxConfidenceSeen": 60,
+  "confidenceBarForAsserting": 60,
+  "fields": {
+    "casesTotal": "cases in the test set",
+    "casesRun": "cases with a browser result of any kind (decoded or refused)",
+    "casesDecoded": "cases that produced letters",
+    "casesRefused": "cases where the decoder declined to name a letter on purpose",
+    "casesNotRun": "cases with no result at all — not failures, simply never launched",
+    "casesInconclusive": "cases attempted but which produced no scoreable message",
+    "lettersCorrect / lettersScored": "positional letter accuracy over the cases that decoded",
+    "exactStrings / stringsScored": "whole messages that came out exactly right, over the cases that ran",
+    "casesCorrect": "alias of exactStrings, kept for convenience",
+    "maxConfidenceSeen": "highest confidence the decoder gave itself on any run so far, in percent",
+    "confidenceBarForAsserting": "the decoder's own bar: below this it labels a decode tentative, not asserted"
+  },
+  "notes": [
+    "Headers are counts only; no number on the listening page is hard-coded, so a future sweep updates this file alone.",
+    "This file is fetched by /receive-lab.html at load. It must stay valid JSON and keep these key names.",
+    "All 20 cases have now been run. Cases 01, 02, 06, 10, 14, 16 were measured 2026-10-10, case 15 is inconclusive (it produced no scoreable message), the other 12 were measured 2026-10-17 with the same harness, and case 17 was re-run on 2026-10-19 through the page's own decoder-simulation path. All rows, with the method and date each came from, are in receive-lab/results.json.",
+    "The five failures are recorded as failures: 09 (SOS at 8 wpm inferred a unit 3.06x too long and printed no letter), 10 and 11 (SOS -> DOS under 12 dB and 6 dB noise), 12 (a false onset 0.7 s early made SOS read ESOS, at the highest confidence in the set, 60%), 14 (reverb, SOS -> ?N).",
+    "Case 17 (two elements) used to be a fourth refusal, and the refusal was the page's fault, not the decoder's: the capture window closed after 1000 ms of silence while a 5 wpm word gap is 1680 ms, so the message was cut in half after its first element. With the window at 2500 ms the same recording decodes E T in one message, 2/2 letters, confidence 36% — under the 60% bar, so the page shows it as tentative, and 36% is a fit-error readout, not a probability of being right.",
+    "Nothing here was measured on a phone, in a room, with a real buzzer or with a human hand — every case is a synthetic WAV, either injected as Chromium's capture device (19 rows) or pushed straight into the decoder in memory (case 17)."
+  ]
+}
