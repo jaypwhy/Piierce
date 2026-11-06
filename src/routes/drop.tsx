@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -196,6 +196,11 @@ function DropPage() {
         Both directions. You drop a file here and it lands in the team's uploads folder; the team
         leaves files in the same folder and you download them below. Any file type, up to 20 MB per
         file. Uploads need your DropKey.
+      </p>
+      <p className="mt-2 text-sm">
+        <Link to="/ideas" className="inline-block py-3 underline underline-offset-4">
+          dropping an idea instead? → /ideas
+        </Link>
       </p>
 
       {/* ---------------------------------------------------------- DropKey */}
