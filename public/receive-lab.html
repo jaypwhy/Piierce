@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Morbraii — listening experiment (can this browser read Morse from sound?)</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --panel2:#0b0f14; --line:#2a313c; --ink:#e6edf3; --dim:#9aa4b2;
+    --dot:#3fb950; --dash:#58a6ff; --gap:#6e7681; --word:#d29922; --bad:#f85149; --warn:#e3b341; --sim:#c084fc;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  header{padding:16px 16px 12px;border-bottom:1px solid var(--line)}
+  h1{font-size:19px;margin:0 0 6px;line-height:1.3}
+  h2{font-size:14px;margin:0 0 10px;text-transform:uppercase;letter-spacing:.07em;color:var(--dim)}
+  h3{font-size:15px;margin:14px 0 6px}
+  main{padding:14px 14px 70px;max-width:880px;margin:0 auto}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin:0 0 14px}
+  button{font:inherit;padding:10px 16px;border-radius:9px;border:1px solid var(--line);
+    background:#21262d;color:var(--ink);cursor:pointer}
+  button.primary{background:#238636;border-color:#2ea043;font-weight:700;font-size:18px;padding:14px 22px;width:100%}
+  button.primary.on{background:#8b2c2c;border-color:#d9534f}
+  button:disabled{opacity:.5;cursor:default}
+  button.small{font-size:14px;padding:7px 12px}
+  code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
+  pre{margin:0;white-space:pre-wrap;word-break:break-word}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:13px;font-family:ui-monospace,monospace}
+  .kv b{color:var(--dim);font-weight:400}
+  .meter{height:12px;background:#0b0f14;border:1px solid var(--line);border-radius:6px;overflow:hidden;width:100%;max-width:260px;position:relative}
+  .meter i{display:block;height:100%;background:linear-gradient(90deg,#3fb950,#d29922,#f85149);width:0%}
+  .meter u{position:absolute;top:-2px;bottom:-2px;width:2px;background:#e6edf3;left:0}
+  .out{font-size:34px;letter-spacing:.12em;font-family:ui-monospace,monospace;min-height:44px;word-break:break-word}
+  .conf{display:inline-block;padding:3px 10px;border-radius:999px;font-size:13px;font-weight:600;border:1px solid}
+  .c-hi{background:#0f2d18;border-color:#2ea043;color:#56d364}
+  .c-mid{background:#2d2408;border-color:#9e6a03;color:#e3b341}
+  .c-lo{background:#2d1113;border-color:#f85149;color:#ff7b72}
+  .c-none{background:#1b2027;border-color:#3d444d;color:#9aa4b2}
+  .trace{display:flex;align-items:flex-end;gap:1px;height:36px;margin:8px 0;overflow:hidden}
+  .trace i{display:block;border-radius:2px;min-width:2px}
+  .t-sound{background:var(--dot);height:36px}
+  .t-dash{background:var(--dash);height:36px}
+  .t-gap{background:var(--gap);height:11px;align-self:flex-end}
+  .t-letter{background:#4b5563;height:11px;align-self:flex-end}
+  .t-word{background:var(--word);height:11px;align-self:flex-end}
+  table{border-collapse:collapse;font-size:13px;font-family:ui-monospace,monospace;width:100%}
+  th,td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:500}
+  .warn{color:var(--warn)} .bad{color:var(--bad)} .dim{color:var(--dim)} .ok{color:var(--dot)}
+  details summary{cursor:pointer;color:var(--dim);font-size:14px}
+  label{font-size:14px;color:var(--dim)}
+  select,input[type=range]{font:inherit;max-width:100%}
+  select{background:#21262d;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px}
+  .card{border-radius:12px;padding:14px;margin:0 0 12px}
+  .card-honest{background:#1b2027;border:1px solid #3d444d}
+  .card-amber{background:#241d06;border:1px solid #9e6a03}
+  .card-sim{background:#1c1526;border:2px dashed var(--sim)}
+  .card-bad{background:#2a1113;border:1px solid #f85149}
+  .tag{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;
+    padding:3px 8px;border-radius:6px;margin-bottom:8px}
+  .tag-sim{background:var(--sim);color:#170f21}
+  .tag-not-mic{background:#f0883e;color:#1b1204}
+  .tag-mic{background:#2ea043;color:#06210f}
+  ul{margin:6px 0 0 18px;padding:0} li{margin:3px 0}
+  .small{font-size:13px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid var(--line);font-size:12px;font-family:ui-monospace,monospace}
+  .pill-ok{border-color:#2ea043;color:#56d364}
+  .pill-no{border-color:#f85149;color:#ff7b72}
+  .pill-unk{border-color:#3d444d;color:#9aa4b2}
+  a{color:#79c0ff}
+</style>
+</head>
+<body>
+<header>
+  <h1>Morbraii — listening experiment: can this browser read Morse out of sound?</h1>
+  <div class="dim small">
+    An experimental prototype. Not a feature, not finished, and it makes mistakes — see the results so far, below.
+  </div>
+</header>
+<main>
+
+<div class="card card-honest" id="honesty">
+  <span class="tag" style="background:#30363d;color:#e6edf3">What this is</span>
+  <p style="margin:0 0 8px">
+    This page tries to <b>hear</b> Morse and turn it back into letters. Your audio is processed here in the
+    browser and <b>never leaves this device</b> — there is no upload, no account, and no external service is called.
+    The only things this page fetches from the internet are its own small summary file and, if you press play, a clip
+    from this same site.
+  </p>
+  <p style="margin:0 0 8px" id="sofar" class="warn"><b>Results so far:</b> loading summary…</p>
+  <p style="margin:0" class="dim small">
+    Honest limits you should know before you trust anything below: on a clean recording it read <span class="mono">SOS</span>
+    correctly at 5 and 12 wpm; at 12 dB of noise one noise burst merged into the first dot and turned <span class="mono">SOS</span>
+    into <span class="mono">DOS</span>; under reverb it decoded the wrong letters entirely. No human has ever tested this,
+    no phone has ever run it, and nothing here has ever heard a real room, a real hand, or a real buzzer.
+  </p>
+</div>
+
+<section aria-label="Listen with the microphone">
+  <h2>1 · Listen now (needs a microphone)</h2>
+  <button id="listen" class="primary">● Listen now</button>
+  <div class="row" style="margin-top:12px">
+    <div style="flex:1;min-width:200px">
+      <div class="meter"><i id="lvl"></i><u id="thr"></u></div>
+      <div class="dim small">level · the white line is the onset threshold it is using right now</div>
+    </div>
+  </div>
+  <div class="kv" id="status" style="margin-top:12px"></div>
+  <div class="dim small" style="margin-top:10px">
+    Press <b>Listen now</b>, allow the microphone, then tap a rhythm on the table, buzz a phone against the desk,
+    or play one of the clips in section 4 out loud near this device. The speed is worked out from the signal itself —
+    it is never assumed.
+  </div>
+
+  <h3>2 · What it heard, and what it decided</h3>
+  <div class="out" id="out">—</div>
+  <div id="confline" style="margin:6px 0 10px"></div>
+  <p class="small" id="confnote" style="margin:0 0 12px;border-left:3px solid #d29922;padding-left:10px">
+    <b>What that confidence figure is — and is not.</b> It is a <b>fit-error readout</b>: how far the measured
+    sound and gap durations sit from the ideal values for the speed the decoder picked. It is <b>not a probability
+    that the decode is right</b>. The highest confidence this test set has ever produced is <b>60 %</b> — exactly
+    this page's own 60 % bar for asserting a decode — and that 60 % was given to a message that was <b>wrong</b>
+    (a false onset 0.7 s early made <span class="mono">SOS</span> read as <span class="mono">ESOS</span>).
+    A high number means the numbers fitted neatly, not that the letters are true.
+  </p>
+  <div id="refusal"></div>
+  <div id="traces"></div>
+  <div id="why" class="small"></div>
+
+  <div class="row" style="margin-top:14px">
+    <label for="truth" style="min-width:100%">Are you playing one of the known clips near the microphone? (optional — lets the page show the true speed beside the measured one)</label>
+    <select id="truth">
+      <option value="">No — live room, I don't know the speed</option>
+    </select>
+  </div>
+
+  <h3>3 · The measurement behind that decode</h3>
+  <div class="row" style="align-items:flex-start;gap:22px">
+    <div class="kv" id="fit"></div>
+    <div style="flex:1;min-width:280px" id="elems"></div>
+  </div>
+
+  <details style="margin-top:12px">
+    <summary>How the decode works (and what it cannot know)</summary>
+    <div class="small" style="margin-top:8px">
+      <p><b>Envelope.</b> The microphone (or, in the simulation, the recording) is sampled in 256-sample hops
+      (≈5.8 ms at 44.1 kHz) and each hop's RMS becomes a decibel value.</p>
+      <p><b>Adaptive threshold.</b> The noise floor is the 20th percentile of the last second of envelope values —
+      measured from the signal, never a fixed number. A sound starts at floor + onset dB and ends at floor + release dB.</p>
+      <p><b>Speed, from the signal.</b> Every unit length from 20 ms to 700 ms is tried; each candidate rounds the measured
+      sounds to the nearest of <i>1 or 3 units</i> and the silences to the nearest of <i>1, 2, 3, 6, 7 or 14 units</i>
+      (standard <b>and</b> Morbraii spacing are allowed in the same search), and the candidate with the smallest average
+      error wins.</p>
+      <p><b>Confidence</b> is a fit-error readout — not a probability of being right — and is how far the measured
+      durations sit from their ideal values, penalised for short messages and
+      for how little the unit length could move before a letter would change. Under 60 % the page calls a decode
+      <b>tentative</b> rather than asserted — and <b>every</b> result in the test set so far came in under 60 %.</p>
+      <p><b>What it cannot know.</b> With fewer than two sounds there is no evidence at all for a unit length, so it refuses
+      to decode. It cannot tell a letter gap from an element gap when only one gap is present, and it has no dictionary —
+      a wrong dot/dash decision becomes a real but wrong letter.</p>
+    </div>
+  </details>
+
+  <details style="margin-top:8px">
+    <summary>Tuning (the threshold is adaptive; these only bias it)</summary>
+    <div class="row" style="margin-top:8px">
+      <label>onset margin <b id="onv">9</b> dB <input type="range" id="onm" min="4" max="20" step="0.5" value="9"></label>
+      <label>release margin <b id="offv">4.5</b> dB <input type="range" id="offm" min="1" max="12" step="0.5" value="4.5"></label>
+      <label>min sound <b id="msv">12</b> ms <input type="range" id="msm" min="4" max="60" step="1" value="12"></label>
+    </div>
+  </details>
+</section>
+
+<section aria-label="No microphone available" id="fallback" hidden>
+  <div class="card card-bad" style="margin:0">
+    <span class="tag" id="fallbackTag" style="background:#f85149;color:#280d0d">No microphone available</span>
+    <p style="margin:0 0 8px" id="fallbackWhy"></p>
+    <p style="margin:0 0 4px"><b>Nothing on this page can decode sound without a microphone.</b> So here is what you can still do:</p>
+    <ul>
+      <li><b>(a) Hear the signal.</b> Play a known clip out loud (section 4). You will hear exactly what the decoder
+      is meant to read. If you do have a working microphone, press <b>Listen now</b> again while it plays and the live
+      readout above will try to decode it.</li>
+      <li><b>(b) Run the decoder on a signal with no microphone at all</b> — section 5, the decoder simulation.
+      That one is <b>not</b> a microphone test, and the page says so on it.</li>
+    </ul>
+    <div class="row" style="margin-top:10px">
+      <button class="small" id="retryMic">Try the microphone again</button>
+    </div>
+    <p class="dim small" style="margin:10px 0 0" id="fallbackHint"></p>
+  </div>
+</section>
+
+<section aria-label="Play a known clip out loud">
+  <h2>4 · Hear the signal — play a known clip out loud</h2>
+  <p class="dim small" style="margin-top:0">
+    These are recordings from our tests, kept exactly as they were measured. Playing one only lets you
+    <b>hear</b> it — nothing is decoded unless a microphone hears it. Each label says what we sent and what the earlier
+    headless test read back.
+  </p>
+  <div id="clips"></div>
+</section>
+
+<section aria-label="Decoder simulation with no microphone" id="directSec">
+  <div class="card card-sim" style="margin:0">
+    <span class="tag tag-sim">Decoder simulation</span>
+    <span class="tag tag-not-mic">Not a microphone test</span>
+    <p style="margin:0 0 8px">
+      <b>This section feeds a signal straight into the decoder inside this page. No microphone is opened, nothing is
+      played out loud, and no sound has to reach this device.</b> It shows the decoder's own arithmetic on a known
+      recording — it is <b>not</b> evidence that the microphone path works on your device, in your room, with your phone.
+      For that, use <b>Listen now</b> with a real microphone.
+    </p>
+    <p class="dim small" style="margin:0 0 10px">
+      No audio hardware is involved at all here: the clip's samples are read out of the file and pushed through the same
+      envelope detector, threshold and speed fitting that the microphone path uses.
+    </p>
+    <p class="dim small" style="margin:0 0 10px" id="simcaveat">
+      <b>A simulation run does not always reproduce the earlier test row exactly.</b> Here the recording is fed in one
+      unbroken stream, while the earlier headless runs went through the browser's capture device and lost a small
+      fraction of frames (capture continuity 0.998–1.0002). On the clean and reverb clips that changes nothing much;
+      on the 12 dB noise clip it was enough to change the answer — the harness read <span class="mono">DOS</span>,
+      this simulation reads <span class="mono">SOS</span>. Which of the two a real microphone would give you is not
+      known, and running the simulation here therefore does <b>not</b> update the results summary at the top of this page.
+    </p>
+    <label for="simsig">Signal to feed the decoder</label><br>
+    <select id="simsig" style="width:100%;margin:6px 0 10px"></select>
+    <div class="row">
+      <button class="small" id="simrun" style="background:#6d28d9;border-color:#a855f7;font-weight:700">
+        ▶ Feed it to the decoder (no microphone)
+      </button>
+      <button class="small" id="simclear">Clear</button>
+    </div>
+    <div id="simstate" class="small mono dim" style="margin-top:10px"></div>
+    <div id="simresult" style="margin-top:12px"></div>
+  </div>
+</section>
+
+<section aria-label="Messages this session">
+  <h2>6 · Every message this session</h2>
+  <div id="history" class="dim small">nothing yet</div>
+  <details style="margin-top:10px">
+    <summary>Raw decoder state (JSON) — the same object the test harness reads</summary>
+    <pre id="json" class="dim" style="max-height:300px;overflow:auto"></pre>
+  </details>
+</section>
+
+<section aria-label="About this page">
+  <h2>7 · About this page</h2>
+  <p class="small" style="margin:0 0 8px">
+    This is the listening prototype: item 1 of the Morbraii plan's "in build" list. It exists so a person can press a
+    button and see what the decoder actually does. Nothing here is for sale, nothing is measured about visitors, and
+    no result on this page is a claim that the receive path is finished or reliable.
+  </p>
+  <p class="small dim" style="margin:0">
+    <a href="/">← back to Morbraii</a>
+  </p>
+</section>
+
+</main>
+<script>
+"use strict";
+/* ------------------------------------------------------------------ *
+ *  Morbraii receive lab — listening page for the owner.
+ *  Decoder core is the measured prototype from receive-lab/index.html
+ *  (unchanged pipeline: RMS envelope -> adaptive threshold -> unit fit).
+ *  Network use: same-origin only — /receive-summary.json and /clips/*.wav.
+ * ------------------------------------------------------------------ */
+
+const HOP = 256;
+const FLOOR_WIN_MS = 1000;
+const FLOOR_PCT = 0.20;
+const MIN_GAP_MS = 10;
+/* How much silence closes a message. It must be longer than the longest gap a
+ * real message can contain: a 5 wpm word gap is 7 units = 1680 ms, so the old
+ * 1000 ms window cut case 17 (E, word gap, T) in half mid-message. 2500 ms
+ * clears 1680 ms with margin. Both capture paths use this one constant: the
+ * microphone path (frame() -> flushMs()) and the direct-signal path, which
+ * pushes samples through the same frame() and then closes the message. */
+const FLUSH_SILENCE_MS = 2500;
+const UNIT_MIN = 20, UNIT_MAX = 700, UNIT_STEPS = 260;
+const DOT_DASH = [1, 3];
+const GAP_UNITS = [1, 2, 3, 6, 7, 14];
+
+const cfg = { onsetDb: 9, releaseDb: 4.5, minSoundMs: 12 };
+
+const S = {                      // live state (one under the hood; S.source says where the samples came from)
+  source: "mic",                 // "mic" | "direct"
+  listening: false, ac: null, stream: null, proc: null,
+  sampleRate: 48000, sampleIndex: 0, fedSamples: 0, startedAt: 0,
+  floorDb: -90, envDb: -90, onDb: -80, offDb: -85, rmsDb: -90,
+  st: "silence", segStart: 0, t: 0, prevDb: null, flushMs: FLUSH_SILENCE_MS, rawDirty: false,
+  raw: [],
+  messages: [],
+  history: [],
+  frames: 0, carry: new Float32Array(0), ma: [],
+  window: [],
+  truthKey: "",
+  suppressRender: false,
+  micState: "not requested",     // not requested | granted | denied | unavailable
+  micDetail: ""
+};
+window.__rx = S;
+
+/* ---- known clips: truth comes from receive-lab/wavs/manifest.json ---- */
+const CLIPS = [
+  { id:"02", file:"/clips/02-sos-5wpm.wav",       label:"clean — SOS at 5 wpm",
+    truth:"SOS", unitMs:240, wpm:5, noise:0,
+    earlier:"earlier headless test: decoded SOS, 3/3 letters, confidence 59%" },
+  { id:"06", file:"/clips/06-sos-12wpm.wav",      label:"clean — SOS at 12 wpm",
+    truth:"SOS", unitMs:100, wpm:12, noise:0,
+    earlier:"earlier headless test: decoded SOS, 3/3 letters, confidence 43%" },
+  { id:"10", file:"/clips/10-sos-5wpm-noise12.wav", label:"noisy — SOS at 5 wpm, white noise at 12 dB SNR",
+    truth:"SOS", unitMs:240, wpm:5, noise:0.15,
+    earlier:"earlier headless test: decoded DOS, 2/3 letters, confidence 33% — a noise onset merged into the first dot" },
+  { id:"14", file:"/clips/14-sos-5wpm-reverb.wav", label:"reverb — SOS at 5 wpm through a smearing room",
+    truth:"SOS", unitMs:240, wpm:5, noise:0,
+    earlier:"earlier headless test: decoded ?N, 0/3 letters, confidence 0 — the tails filled in the gaps" },
+  { id:"16", file:"/clips/16-short-E-5wpm.wav",   label:"one element only — E at 5 wpm",
+    truth:"E", unitMs:240, wpm:5, noise:0,
+    earlier:"earlier headless test: refused to decode (1 sound cannot pin down the unit length)" },
+  { id:"17", file:"/clips/17-short-ET-5wpm.wav",   label:"two elements only — E then T at 5 wpm (one dot, a 1680 ms word gap, one dash)",
+    truth:"E T", unitMs:240, wpm:5, noise:0,
+    earlier:"the case the old 1000 ms flush window cut in half: after the first element only one sound existed, so the window fell back to 1000 ms and the 1680 ms word gap closed the message mid-way" }
+];
+const CLIP = Object.fromEntries(CLIPS.map(c => [c.id, c]));
+
+/* ------------------------- envelope + capture --------------------- */
+
+function pushBlock(x) {
+  const buf = new Float32Array(S.carry.length + x.length);
+  buf.set(S.carry, 0); buf.set(x, S.carry.length);
+  let off = 0;
+  while (off + HOP <= buf.length) {
+    let s = 0;
+    for (let k = 0; k < HOP; k++) { const v = buf[off + k]; s += v * v; }
+    frame(Math.sqrt(s / HOP));
+    off += HOP;
+  }
+  S.carry = buf.slice(off);
+}
+
+function frame(rms) {
+  S.frames++;
+  S.sampleIndex += HOP;
+  S.fedSamples += HOP;
+  const dt = HOP / S.sampleRate;
+  const tEnd = S.sampleIndex / S.sampleRate;
+  S.t = tEnd;
+  S.rmsDb = 20 * Math.log10(rms + 1e-8);
+  const db = S.rmsDb, prev = S.prevDb;
+  S.prevDb = db;
+
+  S.ma.push(db); if (S.ma.length > 3) S.ma.shift();
+  S.envDb = S.ma.reduce((a, b) => a + b, 0) / S.ma.length;
+
+  S.window.push(db);
+  const maxN = Math.max(8, Math.round(FLOOR_WIN_MS / 1000 * S.sampleRate / HOP));
+  while (S.window.length > maxN) S.window.shift();
+  const sorted = S.window.slice().sort((a, b) => a - b);
+  S.floorDb = sorted[Math.min(sorted.length - 1, Math.floor(FLOOR_PCT * sorted.length))];
+  S.onDb = S.floorDb + cfg.onsetDb;
+  S.offDb = S.floorDb + cfg.releaseDb;
+
+  const tPrev = tEnd - dt;
+  let crossUp = null, crossDown = null;
+  if (prev === null) {
+    if (db > S.onDb) crossUp = tPrev;
+    else if (db < S.offDb) crossDown = tPrev;
+  } else {
+    if (prev <= S.onDb && db > S.onDb && db !== prev) crossUp = tPrev + dt * (S.onDb - prev) / (db - prev);
+    if (prev >= S.offDb && db < S.offDb && db !== prev) crossDown = tPrev + dt * (prev - S.offDb) / (prev - db);
+  }
+
+  if (S.st === "silence") {
+    if (crossUp !== null) {
+      if (S.raw.length) { S.raw.push({ kind: "silence", dur: Math.max(0, crossUp - S.segStart) }); S.rawDirty = true; }
+      S.st = "sound"; S.segStart = crossUp;
+    }
+  } else if (crossDown !== null) {
+    S.raw.push({ kind: "sound", dur: Math.max(0, crossDown - S.segStart) });
+    S.rawDirty = true;
+    S.st = "silence"; S.segStart = crossDown;
+  }
+  if (S.rawDirty) { S.flushMs = computeFlush(); S.rawDirty = false; }
+
+  if (S.st === "silence" && S.raw.length && (tEnd - S.segStart) * 1000 > flushMs()) finishMessage();
+  if (!S.suppressRender && S.frames % 6 === 0) render();
+}
+
+/* ------------------------------ cleaning -------------------------- */
+
+function clean(segs) {
+  let a = segs.map(s => ({ kind: s.kind, dur: s.dur }));
+  for (;;) {
+    let hit = -1, kind = null;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i].kind === "sound" && a[i].dur * 1000 < cfg.minSoundMs) { hit = i; kind = "silence"; break; }
+      if (a[i].kind === "silence" && a[i].dur * 1000 < MIN_GAP_MS) { hit = i; kind = "sound"; break; }
+    }
+    if (hit < 0) break;
+    const from = Math.max(0, hit - 1), to = Math.min(a.length - 1, hit + 1);
+    if (from === to) { a.splice(0, 1); continue; }
+    let dur = 0;
+    for (let i = from; i <= to; i++) dur += a[i].dur;
+    a.splice(from, to - from + 1, { kind, dur });
+  }
+  while (a.length && a[0].kind !== "sound") a.shift();
+  while (a.length && a[a.length - 1].kind !== "sound") a.pop();
+  return a;
+}
+
+/* -------------------------- speed inference ----------------------- */
+
+function nearestErr(v, set) {
+  let best = 1e9, pick = null;
+  for (const q of set) { const e = Math.abs(v - q); if (e < best) { best = e; pick = q; } }
+  return { err: best, q: pick };
+}
+
+function costAt(u, soundsMs, gapsMs) {
+  let e = 0, n = 0;
+  for (const s of soundsMs) { e += nearestErr(s / u, DOT_DASH).err; n++; }
+  for (const g of gapsMs) { e += nearestErr(g / u, GAP_UNITS).err; n++; }
+  return n ? e / n : 1e9;
+}
+
+function fitUnit(soundsMs, gapsMs) {
+  const lo = Math.log(UNIT_MIN), hi = Math.log(UNIT_MAX);
+  let best = null, scores = [];
+  for (let i = 0; i < UNIT_STEPS; i++) {
+    const u = Math.exp(lo + (hi - lo) * i / (UNIT_STEPS - 1));
+    const c = costAt(u, soundsMs, gapsMs);
+    scores.push({ u, c });
+    if (!best || c < best.c) best = { u, c };
+  }
+  let rb = best;
+  for (let i = -40; i <= 40; i++) {
+    const u = best.u * (1 + i * 0.0015);
+    if (u < 10 || u > 900) continue;
+    const c = costAt(u, soundsMs, gapsMs);
+    if (c < rb.c) rb = { u, c };
+  }
+  let second = Infinity;
+  for (const s of scores) if (Math.abs(Math.log(s.u / rb.u)) > Math.log(1.12)) second = Math.min(second, s.c);
+  return { u: rb.u, cost: rb.c, second: second === Infinity ? null : second };
+}
+
+const RB = { 1: [0, 1.5], 2: [1.5, 2.5], 3: [2.5, 4.5], 6: [4.5, 6.5], 7: [6.5, 10.5], 14: [10.5, Infinity] };
+
+function roleMargin(elements, u) {
+  let LO = UNIT_MIN, HI = Infinity;
+  for (const el of elements) {
+    const m = el.ms;
+    let rlo, rhi;
+    if (el.kind === "sound") {
+      if (el.label === "dot") { rlo = 0; rhi = 2; } else { rlo = 2; rhi = 4; }
+    } else {
+      const q = nearestErr(m / u, GAP_UNITS).q;
+      rlo = RB[q][0]; rhi = RB[q][1];
+    }
+    if (rhi !== Infinity) LO = Math.max(LO, m / rhi);
+    if (rlo !== 0) HI = Math.min(HI, m / rlo);
+  }
+  const down = (u - LO) / u;
+  const up = HI === Infinity ? 1 : (HI - u) / u;
+  return { lo: +LO.toFixed(0), hi: HI === Infinity ? null : +HI.toFixed(0), down: +down.toFixed(3), up: +up.toFixed(3),
+           margin: +Math.min(down, up).toFixed(3) };
+}
+
+function decode(segs, opts) {
+  const soundsMs = segs.filter(s => s.kind === "sound").map(s => s.dur * 1000);
+  const gapsMs = segs.filter(s => s.kind === "silence").map(s => s.dur * 1000);
+  const warnings = [];
+  const res = { sounds: soundsMs.length, gaps: gapsMs.length, unitMs: null, unitShortest: null,
+                wpm: null, spacing: null, conf: 0, text: "", textTight: "", letters: [], elements: [],
+                meanErr: null, second: null, warnings, ok: false, refused: false };
+  for (let i = 0; i < segs.length; i++)
+    res.elements.push({ i, kind: segs[i].kind, ms: +(segs[i].dur * 1000).toFixed(1) });
+  if (soundsMs.length < 2) {
+    res.refused = true;
+    res.refusalReason = "only " + soundsMs.length + " element(s) of sound: one element cannot pin down the unit length, so no letter is guessed.";
+    warnings.push(res.refusalReason);
+    return res;
+  }
+  if (soundsMs.length < 4 || gapsMs.length < 2)
+    warnings.push("short message (" + soundsMs.length + " sounds, " + gapsMs.length + " gaps) — the unit is weakly constrained.");
+  const f = fitUnit(soundsMs, gapsMs);
+  const u = f.u;
+  res.unitMs = +u.toFixed(1);
+  res.unitShortest = +Math.min.apply(null, soundsMs).toFixed(1);
+  res.wpm = +(1200 / u).toFixed(1);
+  res.meanErr = +f.cost.toFixed(3);
+  res.second = f.second === null ? null : +f.second.toFixed(3);
+
+  let seq = [];
+  for (const el of res.elements) {
+    if (el.kind === "sound") {
+      const nd = nearestErr(el.ms / u, DOT_DASH);
+      el.units = +(el.ms / u).toFixed(2);
+      el.label = nd.q === 1 ? "dot" : "dash";
+      el.fit = +(Math.abs(el.ms / u - nd.q)).toFixed(2);
+    } else {
+      const nd = nearestErr(el.ms / u, GAP_UNITS);
+      el.units = +(el.ms / u).toFixed(2);
+      el.label = (nd.q <= 2) ? "element gap" : (nd.q <= 6 ? "letter gap" : "word gap");
+      el.label += " (" + nd.q + "u)";
+      el.fit = +(Math.abs(el.ms / u - nd.q)).toFixed(2);
+    }
+  }
+  const words = [];
+  let cur = "", curWord = [], sawNonStd = false;
+  for (const el of res.elements) {
+    if (el.kind === "sound") { cur += el.label === "dot" ? "." : "-"; continue; }
+    const q = nearestErr(el.ms / u, GAP_UNITS).q;
+    if (q >= 3) { if (cur) { curWord.push(cur); cur = ""; } }
+    if (q >= 7) { if (curWord.length) { words.push(curWord.slice()); curWord = []; } }
+    if (q === 2 || q === 6 || q === 14) sawNonStd = true;
+  }
+  if (cur) curWord.push(cur);
+  if (curWord.length) words.push(curWord);
+  res.letters = words.map(w => w.map(code => ({ code, char: morseToChar(code) })));
+  res.text = res.letters.map(w => w.map(l => l.char === null ? "?" : l.char)).join(" ");
+  res.textTight = res.letters.map(w => w.map(l => l.char === null ? "?" : l.char).join("")).join(" ");
+  res.spacing = sawNonStd ? "Morbraii spacing (2/6/14 seen)" : "standard (1/3/7)";
+  res.ok = true;
+
+  const c = Math.max(0, Math.min(1, 1 - f.cost / 0.30));
+  const shortPen = soundsMs.length >= 4 ? 1 : (soundsMs.length === 3 ? 0.85 : 0.7);
+  const rm = roleMargin(res.elements, u);
+  res.margin = rm;
+  const marginPen = Math.max(0.45, Math.min(1, 0.45 + (rm.margin / 0.40) * 0.55));
+  res.conf = Math.round(100 * c * shortPen * marginPen);
+  if (rm.margin < 0)
+    warnings.push("no readable unit length fits every element (the label ranges miss each other by " + Math.round(Math.abs(rm.margin) * 100) + "%) — the element labels contradict each other, so read this as a guess.");
+  else if (rm.margin < 0.10)
+    warnings.push("the unit could move only ±" + Math.round(rm.margin * 100) + "% before a letter would change — timing must be steady.");
+  if (f.second !== null && f.second - f.cost < 0.04)
+    warnings.push("a competing unit length fits almost as well (gap " + (f.second - f.cost).toFixed(3) + " units) — read this as a guess.");
+  if (res.conf < 60) warnings.push("confidence under 60% — shown as tentative, not asserted.");
+  if (Math.abs(res.unitShortest - u) / u > 0.25 && soundsMs.length >= 3)
+    warnings.push("'shortest sound = 1 unit' would give " + res.unitShortest.toFixed(0) + " ms, the fit says " +
+                  u.toFixed(0) + " ms — either the message has no dot, or the fit is off.");
+  if (res.letters.some(w => w.some(l => l.char === null))) warnings.push("some elements do not map to a letter (prosign or a misread).");
+  if (opts && opts.truth) res.truth = opts.truth;
+  return res;
+}
+
+const MORSE_TABLE = {".-":"A","-...":"B","-.-.":"C","-..":"D",".":"E","..-.":"F","--.":"G","....":"H","..":"I",
+".---":"J","-.-":"K",".-..":"L","--":"M","-.":"N","---":"O",".--.":"P","--.-":"Q",".-.":"R","...":"S","-":"T",
+"..-":"U","...-":"V",".--":"W","-..-":"X","-.--":"Y","--..":"Z","-----":"0",".----":"1","..---":"2","...--":"3",
+"....-":"4",".....":"5","-....":"6","--...":"7","---..":"8","----.":"9","..--..":"?","-.-.--":"!","-..-.":"/",
+"-.--.":"(","-.--.-":")",".-.-.-":".","--..--":",","---...":":","-....-":"-","-...-":"=",".-.-.":"+","...-..-":"$"};
+function morseToChar(code) { return MORSE_TABLE[code] || null; }
+
+/* --------------------------- message flow ------------------------- */
+
+function computeFlush() {
+  let segs = S.raw;
+  if (segs.length && segs[segs.length - 1].kind === "silence") segs = segs.slice(0, -1);
+  const msg = clean(segs);
+  if (msg.filter(s => s.kind === "sound").length < 2) return FLUSH_SILENCE_MS;
+  const d = decode(msg, null);
+  const gaps = msg.filter((s, i) => s.kind === "silence" && i < msg.length - 1).map(s => s.dur * 1000);
+  const unit = d.unitMs || 100;
+  const maxGap = gaps.length ? Math.max.apply(null, gaps) : 0;
+  return Math.max(FLUSH_SILENCE_MS, Math.min(5000, Math.max(2.5 * maxGap, 9.5 * unit)));
+}
+
+function flushMs() { return S.flushMs || FLUSH_SILENCE_MS; }
+
+function finishMessage() {
+  const cleaned = clean(S.raw);
+  const wasSource = S.source;
+  S.raw = [];
+  S.rawDirty = false;
+  S.flushMs = FLUSH_SILENCE_MS;
+  S.segStart = S.t;
+  if (cleaned.filter(s => s.kind === "sound").length === 0) return;
+  const d = decode(cleaned, null);
+  d.source = wasSource;
+  d.truthKey = S.truthKey;
+  S.messages.push(d);
+  S.history.unshift(d);
+  if (S.history.length > 12) S.history.pop();
+  render();
+}
+
+/* --------------------------- WAV parsing -------------------------- */
+
+function parseWav(buf) {
+  const dv = new DataView(buf);
+  if (dv.getUint32(0, false) !== 0x52494646) throw new Error("not a RIFF file");
+  let off = 12, fmt = null, dataOff = -1, dataLen = 0;
+  while (off + 8 <= dv.byteLength) {
+    const id = dv.getUint32(off, false), size = dv.getUint32(off + 4, true);
+    if (id === 0x666d7420) {
+      fmt = { format: dv.getUint16(off + 8, true), channels: dv.getUint16(off + 10, true),
+              sampleRate: dv.getUint32(off + 12, true), bits: dv.getUint16(off + 22, true) };
+    } else if (id === 0x64617461) { dataOff = off + 8; dataLen = size; }
+    off += 8 + size + (size % 2);
+  }
+  if (!fmt || dataOff < 0) throw new Error("no fmt/data chunk");
+  const bytes = fmt.bits / 8, frames = Math.floor(Math.min(dataLen, dv.byteLength - dataOff) / (bytes * fmt.channels));
+  const out = new Float32Array(frames);
+  for (let i = 0; i < frames; i++) {
+    let acc = 0;
+    for (let c = 0; c < fmt.channels; c++) {
+      const p = dataOff + (i * fmt.channels + c) * bytes;
+      let v;
+      if (fmt.format === 3) v = dv.getFloat32(p, true);
+      else if (fmt.bits === 8) v = (dv.getUint8(p) - 128) / 128;
+      else if (fmt.bits === 16) v = dv.getInt16(p, true) / 32768;
+      else if (fmt.bits === 24) { const b0 = dv.getUint8(p), b1 = dv.getUint8(p + 1), b2 = dv.getInt8(p + 2);
+        v = ((b2 << 16) | (b1 << 8) | b0) / 8388608; }
+      else if (fmt.bits === 32) v = dv.getInt32(p, true) / 2147483648;
+      else throw new Error("unsupported bit depth " + fmt.bits);
+      acc += v;
+    }
+    out[i] = acc / fmt.channels;
+  }
+  return { sampleRate: fmt.sampleRate, samples: out, bits: fmt.bits, channels: fmt.channels, format: fmt.format };
+}
+
+/* ------------- a signal generated in memory (direct mode) ---------- */
+
+function synthSos(unitMs, sr, amp) {
+  const u = unitMs / 1000;
+  const spans = [];               // [startUnits, durUnits, kind]
+  const code = "... --- ...";
+  let t = 0;
+  for (const ch of code.split("")) {
+    if (ch === ".") { spans.push([t, 1, "tone"]); t += 1; }
+    else if (ch === "-") { spans.push([t, 3, "tone"]); t += 3; }
+    else { spans.push([t, 3, "silence"]); t += 3; }
+    spans.push([t, 1, "silence"]); t += 1;
+  }
+  const lead = 0.5, tail = 8;
+  const n = Math.ceil((lead + t + tail) / u * unitMs / 1000 * sr);
+  const out = new Float32Array(n);
+  const freq = 600;
+  const ramp = Math.max(1, Math.round(0.005 * sr));
+  for (const [start, dur, kind] of spans) {
+    if (kind !== "tone") continue;
+    const a = Math.round((lead + start * u) * sr), b = Math.round((lead + (start + dur) * u) * sr);
+    for (let i = a; i < b && i < n; i++) {
+      let env = amp;
+      if (i - a < ramp) env *= (i - a) / ramp;
+      if (b - i <= ramp) env *= (b - i) / ramp;
+      out[i] = env * Math.sin(2 * Math.PI * freq * i / sr);
+    }
+  }
+  return out;
+}
+
+/* ------------------------------- UI ------------------------------- */
+
+const $ = id => document.getElementById(id);
+const fmt = (v, n) => (v === null || v === undefined ? "—" : Number(v).toFixed(n === undefined ? 1 : n));
+const esc = s => String(s).replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
+
+function micSupport() {
+  if (!window.isSecureContext)
+    return { ok: false, why: "This page is not in a secure context (needs https:// or localhost), and browsers only allow microphone access in one." };
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function")
+    return { ok: false, why: "This browser does not expose the microphone API (navigator.mediaDevices.getUserMedia) at all." };
+  return { ok: true };
+}
+
+function showFallback(why, hint) {
+  $("fallback").hidden = false;
+  $("fallbackWhy").innerHTML = esc(why);
+  if (hint) { $("fallbackHint").innerHTML = esc(hint); $("fallbackHint").hidden = false; }
+  else { $("fallbackHint").textContent = ""; $("fallbackHint").hidden = true; }
+  S.micState = "unavailable";
+  S.micDetail = why;
+  render();
+}
+
+function hideFallback() { $("fallback").hidden = true; }
+
+function qualityLabel(d) {
+  if (!d) return null;
+  if (d.refused || !d.ok) return { cls: "c-none", text: "no decode offered", why: "the decoder refused rather than guess" };
+  if (d.conf >= 80) return { cls: "c-hi", text: "strong — " + d.conf + "%", why: "the measured elements sit close to their ideal values" };
+  if (d.conf >= 60) return { cls: "c-mid", text: "fair — " + d.conf + "%", why: "readable, but the fit is not tight" };
+  return { cls: "c-lo", text: "tentative — " + d.conf + "%", why: "under the decoder's own 60% bar: read it as a guess, not an answer" };
+}
+
+/* positional letter accuracy against a known truth (the same rule results.json used) */
+function positional(truthStr, got) {
+  const t = String(truthStr || "").replace(/\s+/g, "");
+  const g = String(got || "").replace(/\s+/g, "");
+  let right = 0;
+  for (let i = 0; i < Math.min(t.length, g.length); i++) if (t[i] === g[i]) right++;
+  return right + "/" + t.length;
+}
+
+function truthFor(key) {
+  if (!key) return null;
+  if (key === "synth") return { label: "generated in memory — SOS at 5 wpm", truth: "SOS", unitMs: 240, wpm: 5 };
+  const c = CLIP[key];
+  return c ? { label: c.label, truth: c.truth, unitMs: c.unitMs, wpm: c.wpm } : null;
+}
+
+function render() {
+  const listening = S.listening;
+  $("listen").textContent = listening ? "■ Stop listening" : "● Listen now";
+  $("listen").className = "primary" + (listening ? " on" : "");
+  $("lvl").style.width = Math.max(0, Math.min(100, (S.envDb + 90) / 90 * 100)) + "%";
+  $("thr").style.left = Math.max(0, Math.min(100, (S.onDb + 90) / 90 * 100)) + "%";
+  const wall = S.startedAt ? (performance.now() - S.startedAt) / 1000 : 0;
+  const cont = wall > 0.5 ? (S.fedSamples / S.sampleRate) / wall : null;
+  const micPill = S.micState === "granted" ? '<span class="pill pill-ok">granted</span>'
+    : S.micState === "unavailable" ? '<span class="pill pill-no">not available</span>'
+    : S.micState === "denied" ? '<span class="pill pill-no">denied</span>'
+    : '<span class="pill pill-unk">not requested</span>';
+  const acState = S.source === "direct" && !S.ac ? "not used — direct signal mode (no audio hardware)" : (S.ac ? S.ac.state : "not started");
+  $("status").innerHTML =
+    "<b>microphone</b><span>" + micPill + (S.micDetail ? " " + esc(S.micDetail) : "") + "</span>" +
+    "<b>AudioContext</b><span>" + esc(acState) + "</span>" +
+    "<b>secure context</b><span>" + (window.isSecureContext ? "yes" : "no") + "</span>" +
+    "<b>sample rate</b><span>" + S.sampleRate + " Hz</span>" +
+    "<b>envelope</b><span>" + fmt(S.envDb) + " dBFS</span>" +
+    "<b>noise floor</b><span>" + fmt(S.floorDb) + " dBFS</span>" +
+    "<b>threshold</b><span>" + fmt(S.onDb) + " / " + fmt(S.offDb) + " dBFS</span>" +
+    "<b>audio frames</b><span>" + S.frames + "</span>" +
+    "<b>capture continuity</b><span>" + (cont === null ? "—" : fmt(cont, 3) + "× realtime") + "</span>";
+
+  const cleaned = clean(S.raw);
+  const live = cleaned.filter(s => s.kind === "sound").length >= 2 ? decode(cleaned, null) : null;
+  const last = S.messages.length ? S.messages[S.messages.length - 1] : null;
+  const show = live || last;                     // live readout wins; otherwise the last completed message
+  const q = qualityLabel(show);
+  const t = truthFor(S.truthKey);
+
+  /* big output line */
+  if (!show) {
+    $("out").innerHTML = cleaned.length ? '<span class="dim">listening…</span>' : '<span class="dim">— press Listen now —</span>';
+  } else if (show.refused || !show.ok) {
+    $("out").innerHTML = '<span class="dim" style="font-size:24px">not enough signal to name a letter</span>';
+  } else {
+    const tentative = show.conf < 60;
+    $("out").innerHTML = (tentative ? '<span class="warn">' : "") + esc(show.text) + (tentative ? "</span>" : "");
+  }
+
+  /* confidence / quality, and where the samples came from */
+  const srcPill = !show ? "" : (show.source === "direct"
+    ? ' <span class="pill" style="border-color:#c084fc;color:#d8b4fe">source: decoder simulation — no microphone</span>'
+    : live ? ' <span class="pill pill-ok">source: microphone, live</span>'
+           : ' <span class="pill pill-ok">source: microphone</span>');
+  $("confline").innerHTML = !show ? "" :
+    '<span class="conf ' + q.cls + '">' + esc(q.text) + "</span> " +
+    '<span class="dim small">' + esc(q.why) + "</span>" + srcPill;
+
+  /* unit: measured, and the true value when we know what was played */
+  let unitLine = "";
+  if (show && show.ok) {
+    unitLine = '<div class="kv" style="margin-top:6px"><b>unit measured</b><span>' + fmt(show.unitMs) +
+      " ms → " + fmt(show.wpm) + " wpm</span>";
+    if (t) unitLine += "<b>unit true</b><span>" + fmt(t.unitMs) + " ms (" + esc(t.truth) + " at " + t.wpm +
+      " wpm) <span class='dim'>→ error " + fmt((show.unitMs - t.unitMs) / t.unitMs * 100, 1) + "%</span></span>";
+    unitLine += "<b>what it read</b><span>" + esc(show.textTight) +
+      (t ? " <span class='dim'>· sent " + esc(t.truth) + " — read " + esc(show.textTight) + "</span>" : "") + "</span>";
+    unitLine += "<b>spacing it decided</b><span>" + esc(show.spacing) + "</span>";
+    unitLine += "<b>elements</b><span>" + show.sounds + " sounds / " + show.gaps + " gaps · mean fit error " +
+      fmt(show.meanErr, 2) + " units</span></div>";
+  }
+  $("refusal").innerHTML = (show && show.refused)
+    ? '<div class="card card-amber" style="margin:8px 0 10px"><b>It refuses to guess.</b> ' +
+      esc(show.refusalReason) + "<br><span class='small dim'>A single sound of " +
+      fmt(show.elements[0] && show.elements[0].ms, 0) + " ms is a perfect dot at one speed and a perfect dash at another, " +
+      "with nothing to compare it against. The measurement is real; the letter would not be.</span></div>" + unitLine
+    : unitLine;
+
+  $("why").innerHTML = !show ? "" : show.warnings.map(w => '<div class="warn">⚠ ' + esc(w) + "</div>").join("");
+
+  /* trace */
+  let tr = "";
+  const segs = show && show.elements ? show.elements : cleaned.map(s => ({ kind: s.kind, ms: s.dur * 1000, label: null }));
+  for (const el of segs) {
+    const w = Math.max(2, Math.min(90, el.ms * 0.12));
+    const cls = el.kind === "sound" ? (el.label === "dash" ? "t-dash" : "t-sound")
+      : (el.label && el.label.indexOf("word") === 0 ? "t-word" : el.label && el.label.indexOf("letter") === 0 ? "t-letter" : "t-gap");
+    tr += '<i class="' + cls + '" style="width:' + w + 'px" title="' + fmt(el.ms, 0) + " ms " + (el.label || "") + '"></i>';
+  }
+  $("traces").innerHTML = '<div class="trace">' + tr + "</div>";
+
+  $("fit").innerHTML = !show ? "<b>—</b><span></span>" :
+    "<b>unit inferred</b><span>" + fmt(show.unitMs) + " ms (" + fmt(show.wpm) + " wpm)</span>" +
+    "<b>unit true</b><span>" + (t ? fmt(t.unitMs) + " ms" : "not known — live signal") + "</span>" +
+    "<b>unit from shortest sound</b><span>" + fmt(show.unitShortest) + " ms</span>" +
+    "<b>fit error</b><span>" + fmt(show.meanErr, 3) + " units avg</span>" +
+    "<b>next-best unit</b><span>" + fmt(show.second, 3) + " units</span>" +
+    "<b>confidence</b><span>" + (show.ok ? show.conf + "%" : "none (refused)") + "</span>" +
+    "<b>messages this session</b><span>" + S.messages.length + "</span>";
+
+  if (show && show.elements && show.elements.length) {
+    let h = "<table><tr><th>#</th><th>kind</th><th>measured</th><th>units</th><th>read as</th><th>off by</th></tr>";
+    for (const el of show.elements)
+      h += "<tr><td>" + el.i + "</td><td>" + el.kind + "</td><td>" + fmt(el.ms, 0) + " ms</td><td>" +
+           (el.units === undefined ? "—" : fmt(el.units, 2)) + "</td><td>" + (el.label || "—") + "</td><td>" +
+           (el.fit === undefined ? "—" : fmt(el.fit, 2)) + "</td></tr>";
+    $("elems").innerHTML = h + "</table>";
+  } else $("elems").innerHTML = '<span class="dim small">no elements measured yet</span>';
+
+  $("history").innerHTML = S.history.length ? S.history.map((m, i) =>
+    "<div>" + (i + 1) + ". <code>" + esc(m.text || "—") + "</code> <span class='dim'>" +
+    (m.refused ? "refused — " + esc(m.refusalReason) : esc(m.textTight) + " · " + m.conf + "% · unit " + fmt(m.unitMs) + " ms") +
+    " · " + (m.source === "direct" ? "<b>direct signal (no microphone)</b>" : "microphone") + "</span></div>").join("")
+    : "nothing yet";
+
+  $("json").textContent = JSON.stringify(result(), null, 1);
+}
+
+/* ---------------------- direct (no microphone) -------------------- */
+
+function resetState(sampleRate) {
+  S.sampleRate = sampleRate; S.sampleIndex = 0; S.fedSamples = 0; S.frames = 0;
+  S.carry = new Float32Array(0); S.ma = []; S.window = [];
+  S.prevDb = null; S.floorDb = -90; S.envDb = -90; S.onDb = -80; S.offDb = -85; S.rmsDb = -90;
+  S.st = "silence"; S.segStart = 0; S.t = 0; S.raw = []; S.rawDirty = false; S.flushMs = FLUSH_SILENCE_MS;
+}
+
+async function runDirect(key) {
+  const spec = truthFor(key);
+  if (!spec) return;
+  stopListening(false);
+  S.messages = []; S.history = []; S.truthKey = key; S.source = "direct";
+  $("simresult").innerHTML = '<span class="dim">feeding the signal…</span>';
+  $("simstate").textContent = "no microphone opened · no AudioContext created · samples pushed straight into the envelope detector";
+  S.suppressRender = true;
+  let sr, data, origin;
+  try {
+    if (key === "synth") {
+      sr = 44100; data = synthSos(240, sr, 0.6);
+      origin = "SOS generated in memory at 5 wpm (240 ms unit), 600 Hz tone";
+    } else {
+      const c = CLIP[key];
+      const r = await fetch(c.file, { cache: "force-cache" });
+      if (!r.ok) throw new Error("could not load " + c.file + " (HTTP " + r.status + ")");
+      const w = parseWav(await r.arrayBuffer());
+      sr = w.sampleRate; data = w.samples;
+      origin = "clip " + c.id + " read from " + c.file + " (" + w.bits + "-bit, " + w.channels +
+        " ch, " + w.sampleRate + " Hz)";
+    }
+    resetState(sr);
+    pushBlock(data);
+    pushBlock(new Float32Array(Math.round(sr * 6)));   // trailing silence so the message is closed
+    if (clean(S.raw).filter(s => s.kind === "sound").length > 0) finishMessage();
+  } catch (e) {
+    S.suppressRender = false;
+    $("simresult").innerHTML = '<div class="card card-bad" style="margin:0">Could not run the simulation: ' + esc(e.message) + "</div>";
+    return;
+  }
+  S.suppressRender = false;
+  const m = S.messages[S.messages.length - 1] || null;
+  const q = qualityLabel(m);
+  const truth = spec.truth, got = m && m.ok ? m.textTight : null;
+  $("simstate").textContent = origin + " · sample rate " + S.sampleRate + " Hz · " + S.frames + " envelope frames";
+  $("simresult").innerHTML =
+    '<div class="card" style="margin:0;background:#0b0f14;border:1px solid var(--line)">' +
+    '<span class="tag tag-microless" style="background:#f0883e;color:#1b1204">Simulation result — no microphone was used</span>' +
+    '<div class="out" style="font-size:26px">' + (m ? (m.refused ? '<span class="dim" style="font-size:20px">refused — no letter offered</span>' : esc(m.text)) : "no message") + "</div>" +
+    '<div style="margin:6px 0 8px"><span class="conf ' + (q ? q.cls : "c-none") + '">' + esc(q ? q.text : "no decode") + "</span></div>" +
+    '<div class="kv">' +
+    "<b>sent</b><span>" + esc(truth) + " at " + spec.wpm + " wpm (true unit " + spec.unitMs + " ms)</span>" +
+    "<b>read</b><span>" + (got ? esc(got) + " · " + positional(truth, got) + " letters right (positional)" : "— refused —") + "</span>" +
+    "<b>unit measured</b><span>" + (m && m.ok ? fmt(m.unitMs) + " ms (" + fmt(m.wpm) + " wpm)" : "not inferred") + "</span>" +
+    "<b>unit true</b><span>" + spec.unitMs + " ms</span>" +
+    "<b>elements found</b><span>" + (m ? m.sounds + " sounds, " + m.gaps + " gaps" : "—") + "</span>" +
+    "</div>" +
+    (m && m.warnings ? '<div class="small" style="margin-top:8px">' + m.warnings.map(w => '<div class="warn">⚠ ' + esc(w) + "</div>").join("") + "</div>" : "") +
+    '<p class="small dim" style="margin:10px 0 0">This is the decoder reading a signal that was handed to it in memory. ' +
+    "It is <b>not</b> a test of the microphone path: nothing here proves that a microphone on your device, in your room, hears anything at all.</p>" +
+    "</div>";
+  render();
+}
+
+/* --------------------------- start / stop ------------------------- */
+
+async function startListening() {
+  if (S.listening) return;
+  const sup = micSupport();
+  if (!sup.ok) { showFallback(sup.why, "On a phone or computer with a microphone, the page works without this warning."); return; }
+  hideFallback();
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+  } catch (e) {
+    S.micState = "denied";
+    showFallback("The microphone could not be opened (" + (e.name || "error") + (e.message ? ": " + e.message : "") + ").",
+      "Denied, busy, or no input device — the page cannot decode anything until a microphone is available.");
+    return;
+  }
+  if (!stream.getAudioTracks().length) {
+    showFallback("The microphone opened but delivered no audio track — there is no usable input on this device.", "");
+    try { stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+    return;
+  }
+  try {
+    S.ac = new (window.AudioContext || window.webkitAudioContext)();
+    S.sampleRate = S.ac.sampleRate;
+    if (S.ac.state === "suspended") await S.ac.resume();
+    const src = S.ac.createMediaStreamSource(stream);
+    S.proc = S.ac.createScriptProcessor(512, 1, 1);
+    S.proc.onaudioprocess = e => pushBlock(e.inputBuffer.getChannelData(0));
+    const sink = S.ac.createGain(); sink.gain.value = 0;
+    src.connect(S.proc); S.proc.connect(sink); sink.connect(S.ac.destination);
+  } catch (e) {
+    showFallback("The audio engine could not start (" + (e.name || "error") + ").", "");
+    try { stream.getTracks().forEach(t => t.stop()); } catch (e2) {}
+    return;
+  }
+  S.stream = stream;
+  S.source = "mic";
+  S.micState = "granted";
+  S.micDetail = "";
+  S.listening = true; S.startedAt = performance.now(); S.fedSamples = 0; S.sampleIndex = 0;
+  S.raw = []; S.rawDirty = false; S.flushMs = FLUSH_SILENCE_MS; S.segStart = 0; S.st = "silence";
+  S.prevDb = null; S.window = []; S.ma = []; S.messages = []; S.history = []; S.frames = 0;
+  render();
+}
+
+function stopListening(doRender) {
+  S.listening = false;
+  try { S.proc && S.proc.disconnect(); } catch (e) {}
+  try { S.stream && S.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+  try { S.ac && S.ac.close(); } catch (e) {}
+  S.ac = null; S.proc = null; S.stream = null;
+  if (doRender !== false) render();
+}
+
+function result() {
+  const cleaned = clean(S.raw);
+  const live = cleaned.filter(s => s.kind === "sound").length >= 2 ? decode(cleaned, null) : null;
+  return {
+    page: "morbrai listening prototype",
+    source: S.source,
+    microphone: S.micState,
+    audioContextState: S.ac ? S.ac.state : "not started",
+    secureContext: !!window.isSecureContext,
+    sampleRate: S.sampleRate,
+    frames: S.frames,
+    captureContinuity: S.startedAt ? +((S.fedSamples / S.sampleRate) / ((performance.now() - S.startedAt) / 1000)).toFixed(4) : null,
+    floorDb: +S.floorDb.toFixed(1), onDb: +S.onDb.toFixed(1), offDb: +S.offDb.toFixed(1),
+    flushMs: S.flushMs, st: S.st, levelDb: +S.rmsDb.toFixed(1),
+    cfg: { onsetDb: cfg.onsetDb, releaseDb: cfg.releaseDb, minSoundMs: cfg.minSoundMs },
+    messages: S.messages.map(m => ({
+      text: m.text, textTight: m.textTight, ok: m.ok, refused: !!m.refused, conf: m.conf,
+      unitMs: m.unitMs, unitFromShortest: m.unitShortest, wpm: m.wpm, spacing: m.spacing,
+      meanErr: m.meanErr, second: m.second, margin: m.margin, sounds: m.sounds, gaps: m.gaps,
+      source: m.source, warnings: m.warnings,
+      elementMs: m.elements.map(e => ({ kind: e.kind, ms: e.ms, units: e.units, label: e.label }))
+    })),
+    liveText: live && live.ok ? live.text : null,
+    liveUnitMs: live && live.ok ? live.unitMs : null
+  };
+}
+window.__rx.result = result;
+window.__rx.decode = decode;
+window.__rx.clean = clean;
+/* test hooks (same idea as the lab page's ?auto=1): drive the page without clicking */
+window.__rl = {
+  runDirect: runDirect,
+  startListening: startListening,
+  stopListening: stopListening,
+  showFallback: showFallback,
+  clips: CLIPS,
+  parseWav: parseWav,
+  state: () => ({ microphone: S.micState, audioContextState: S.ac ? S.ac.state : "not started",
+                  source: S.source, messages: S.messages.length, secureContext: !!window.isSecureContext })
+};
+
+/* ----------------------------- wiring ----------------------------- */
+
+$("listen").addEventListener("click", () => {
+  if (S.listening) { stopListening(true); }
+  else startListening().catch(e => showFallback("The microphone could not be started (" + e.name + ").", ""));
+});
+$("retryMic").addEventListener("click", () => startListening().catch(e => showFallback("The microphone could not be started (" + e.name + ").", "")));
+
+const bind = (id, key, out, scale) => { const el = $(id); el.addEventListener("input", () => { cfg[key] = Number(el.value) * (scale || 1); $(out).textContent = el.value; render(); }); };
+bind("onm", "onsetDb", "onv"); bind("offm", "releaseDb", "offv"); bind("msm", "minSoundMs", "msv");
+
+/* clips: playback only — no decoding happens here */
+(function buildClips() {
+  const wrap = $("clips");
+  for (const c of CLIPS) {
+    const row = document.createElement("div");
+    row.className = "card card-honest";
+    row.innerHTML = '<div style="font-weight:700;margin-bottom:2px">' + esc(c.label) + "</div>" +
+      '<div class="small dim" style="margin-bottom:6px">sent <b>' + esc(c.truth) + "</b> at " + c.wpm +
+      " wpm (1 unit = " + c.unitMs + " ms) · " + esc(c.earlier) + "</div>";
+    const audio = document.createElement("audio");
+    audio.controls = true; audio.preload = "none"; audio.src = c.file;
+    audio.style.width = "100%";
+    row.appendChild(audio);
+    wrap.appendChild(row);
+  }
+  const synthBtn = document.createElement("div");
+  synthBtn.className = "small dim";
+  synthBtn.style.marginTop = "4px";
+  synthBtn.innerHTML = "Section 5 can also feed the decoder an <b>SOS pattern generated in memory</b>, with no file at all.";
+  wrap.appendChild(synthBtn);
+})();
+
+/* truth selector */
+(function buildTruth() {
+  const sel = $("truth");
+  for (const c of CLIPS) {
+    const o = document.createElement("option");
+    o.value = c.id;
+    o.textContent = c.label + " — true unit " + c.unitMs + " ms";
+    sel.appendChild(o);
+  }
+  sel.addEventListener("change", () => { S.truthKey = sel.value; render(); });
+})();
+
+/* direct-signal selector */
+(function buildSim() {
+  const sel = $("simsig");
+  const o0 = document.createElement("option");
+  o0.value = "synth"; o0.textContent = "SOS generated in memory — 5 wpm, 240 ms unit (no file)";
+  sel.appendChild(o0);
+  for (const c of CLIPS) {
+    const o = document.createElement("option");
+    o.value = c.id;
+    o.textContent = "clip " + c.id + " — " + c.label;
+    sel.appendChild(o);
+  }
+  $("simrun").addEventListener("click", () => runDirect(sel.value));
+  $("simclear").addEventListener("click", () => {
+    S.messages = []; S.history = []; S.raw = []; S.segStart = S.t;
+    $("simresult").innerHTML = ""; $("simstate").textContent = "";
+    render();
+  });
+})();
+
+/* results-so-far summary: fetched, never hard-coded in the copy */
+fetch("/receive-summary.json", { cache: "no-cache" })
+  .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+  .then(s => {
+    const skipped = (s.casesNotRun || 0) + (s.casesInconclusive || 0);
+    $("sofar").innerHTML = "<b>Results so far:</b> " + s.casesRun + " of " + s.casesTotal +
+      " test cases have been run (" + s.casesDecoded + " produced letters, " + s.casesRefused +
+      " refused honestly); " + skipped + (skipped === 1 ? " has" : " have") + " no result at all. " + s.lettersCorrect + " of " + s.lettersScored +
+      " letters in the cases that decoded came out right, and " + s.exactStrings + " of " + s.stringsScored +
+      " whole messages were exact. " +
+      (s.maxConfidenceSeen === null || s.maxConfidenceSeen === undefined
+        ? "No confidence value has been recorded yet."
+        : "The highest confidence the decoder gave itself was " + s.maxConfidenceSeen + "%, " +
+          (s.maxConfidenceSeen >= (s.confidenceBarForAsserting ?? 60)
+            ? "which reaches its "
+            : "which is still short of its ") +
+          (s.confidenceBarForAsserting ?? 60) + "% bar for asserting a decode.") +
+      " Measured " + s.measurementDate +
+      " (" + esc(s.source) + ").";
+  })
+  .catch(e => { $("sofar").innerHTML = "<b>Results so far:</b> the summary file could not be loaded (" + esc(e.message) + "), so this page will not quote any number it cannot show you."; });
+
+/* honest fallback at load: if the browser has no microphone path at all, say so immediately */
+(function checkMic() {
+  const sup = micSupport();
+  if (!sup.ok) showFallback(sup.why, "Section 5 (decoder simulation) and section 4 (playing the clips) still work fully.");
+  render();
+})();
+
+render();
+</script>
+</body>
+</html>
