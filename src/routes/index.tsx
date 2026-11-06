@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { CaptionNode } from "../caption-node";
 import {
   ASL,
   AslNotes,
@@ -2495,6 +2496,7 @@ function TonePanel({
 /* ------------------------------------------------------------------ */
 type ViewId =
   | "letters"
+  | "captions"
   | "melody"
   | "lessons"
   | "games"
@@ -2504,6 +2506,7 @@ type ViewId =
 
 const VIEWS: { id: ViewId; label: string }[] = [
   { id: "letters", label: "Letters" },
+  { id: "captions", label: "Captions" },
   { id: "melody", label: "Melody" },
   { id: "lessons", label: "Lessons" },
   { id: "games", label: "Games" },
@@ -2516,6 +2519,8 @@ const VIEWS: { id: ViewId; label: string }[] = [
    Tabs hide things, so where you are should never be a guess. */
 const VIEW_NOTE: Record<ViewId, string> = {
   letters: "One letter in every channel: pick it, see the glyph, feel it.",
+  captions:
+    "Speech or text in \u2014 words, buzz, light and a Braille cell out, at the pace you set.",
   melody: "Type a word, a phrase or a paragraph and play it as melody.",
   lessons: "Lessons 1\u20135, ending in the flagship phrase.",
   games:
@@ -4478,7 +4483,16 @@ function Home() {
      iPhone case) and OFF everywhere else. The user's tap owns it after
      that. The panel stays subscribed either way, so flipping this can
      never desync the light from the buzz. */
-  const [lightOn, setLightOn] = useState(() => !canVibrate());
+  /* Light mode defaults ON wherever the device cannot vibrate — but the
+     decision is made AFTER mount, never in the initialiser. The server
+     has no navigator, so initialising from canVibrate() rendered "light
+     ON" on the server and "light OFF" on every phone that can buzz: a
+     hydration text mismatch (React #418) on every load. After mount the
+     behaviour is exactly what it was. */
+  const [lightOn, setLightOn] = useState(false);
+  useEffect(() => {
+    if (!canVibrate()) setLightOn(true);
+  }, []);
 
   /* Timing profile — the single source of truth for every rhythm on the
      page. Default is standard Morse at 5 wpm: a first learner needs a
@@ -6156,6 +6170,14 @@ function Home() {
             </div>
           </div>
         </section>
+        </TabSection>
+
+        <TabSection show={view === "captions" || view === "classic"}>
+        {/* The captioning node — speech or typed text in, the same
+            message out on words, buzz, light and a Braille cell. It
+            reads the page's timing profile and unit, and encodes
+            everything through the one shared encoder. */}
+        <CaptionNode profile={profile} unitMs={timing.unitMs} />
         </TabSection>
 
         <TabSection show={view === "games" || view === "classic"}>
