@@ -22,16 +22,34 @@ async function readStoredKey(): Promise<string> {
   }
 }
 
+/* Every character a phone keyboard might put where a hyphen belongs. An en
+   dash is what iOS and Android autocorrect produce between two words, so the
+   owner typing "Albatross–Shoebill" is typing the key, not a wrong key.
+   Listed by code point so the file stays readable in any editor:
+     U+2010 hyphen, U+2011 non-breaking hyphen, U+2012 figure dash,
+     U+2013 en dash, U+2014 em dash, U+2015 horizontal bar,
+     U+2212 minus sign, U+FE63 small hyphen-minus, U+FF0D fullwidth hyphen. */
+const DASHES = /[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uFE63\uFF0D]/g;
+
+/* One form for both sides of the comparison: dashes folded to "-", every run
+   of whitespace (including non-breaking spaces, which is what a paste from a
+   document brings) collapsed to one space, and the ends trimmed. */
+function normaliseKey(raw: unknown): string {
+  return String(raw ?? "")
+    .replace(DASHES, "-")
+    .replace(/[\s\u00A0\u2000-\u200B\u202F\u205F\u3000]+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
 /* Case-insensitive on purpose: the key is read off a screen and typed on a
    phone, and the capitals carry no meaning. An empty stored key matches
    nothing, so a missing file locks both pages instead of opening them. */
 export async function keyMatches(given: unknown): Promise<boolean> {
-  const stored = await readStoredKey();
+  const stored = normaliseKey(await readStoredKey());
   if (!stored) return false;
-  const candidate = String(given ?? "")
-    .trim()
-    .toLowerCase();
-  return candidate.length > 0 && candidate === stored.toLowerCase();
+  const candidate = normaliseKey(given);
+  return candidate.length > 0 && candidate === stored;
 }
 
 /* The shape every gated handler returns when the key is wrong. */

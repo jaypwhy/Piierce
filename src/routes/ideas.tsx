@@ -76,13 +76,13 @@ function IdeasPage() {
       </p>
 
       <DropKeyGate verify={verify}>
-        {(dropKey) => <IdeasWorkspace dropKey={dropKey} />}
+        {(dropKey, locked) => <IdeasWorkspace dropKey={dropKey} locked={locked} />}
       </DropKeyGate>
     </main>
   );
 }
 
-function IdeasWorkspace({ dropKey }: { dropKey: string }) {
+function IdeasWorkspace({ dropKey, locked }: { dropKey: string; locked: boolean }) {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [listing, setListing] = useState<Listing | null>(null);
@@ -92,16 +92,18 @@ function IdeasWorkspace({ dropKey }: { dropKey: string }) {
   });
 
   const refresh = useCallback(async () => {
+    if (locked) return; /* no key yet: the ideas folder is never asked for */
     const r = await listIdeas({ data: { key: dropKey } });
     if (r.ok) setListing(r);
     else setStatus({ kind: "bad", text: r.error });
-  }, [dropKey]);
+  }, [dropKey, locked]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
   async function drop() {
+    if (locked) return;
     setStatus({ kind: "busy", text: "Dropping the idea…" });
     const r = await dropIdea({ data: { key: dropKey, title, text } });
     if (!r.ok) {
@@ -141,7 +143,7 @@ function IdeasWorkspace({ dropKey }: { dropKey: string }) {
   const over = size > 64 * 1024;
 
   return (
-    <>
+    <fieldset disabled={locked} className="m-0 min-w-0 border-0 p-0">
       {/* ------------------------------------------------------------ form */}
       <section className="mt-6">
         <label htmlFor="idea-title" className="text-sm font-semibold">
@@ -219,13 +221,19 @@ function IdeasWorkspace({ dropKey }: { dropKey: string }) {
           </p>
         ) : null}
 
-        {listing && listing.files.length === 0 ? (
+        {locked ? (
+          <p className="mt-3 rounded-2xl border border-slate-200 px-4 py-6 text-sm text-slate-500">
+            Hidden until the DropKey is accepted.
+          </p>
+        ) : null}
+
+        {!locked && listing && listing.files.length === 0 ? (
           <p className="mt-3 rounded-2xl border border-slate-200 px-4 py-6 text-sm text-slate-500">
             Nothing dropped yet — the first idea will appear here.
           </p>
         ) : null}
 
-        {listing && listing.files.length > 0 ? (
+        {!locked && listing && listing.files.length > 0 ? (
           <ul className="mt-3 divide-y divide-slate-200 rounded-2xl border border-slate-200">
             {listing.files.map((f) => (
               <li key={f.name} className="flex items-start gap-3 px-4 py-3">
@@ -256,6 +264,6 @@ function IdeasWorkspace({ dropKey }: { dropKey: string }) {
           out of the static export.
         </p>
       </section>
-    </>
+    </fieldset>
   );
 }

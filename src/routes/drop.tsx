@@ -75,13 +75,13 @@ function DropPage() {
       </p>
 
       <DropKeyGate verify={verify}>
-        {(dropKey) => <DropWorkspace dropKey={dropKey} />}
+        {(dropKey, locked) => <DropWorkspace dropKey={dropKey} locked={locked} />}
       </DropKeyGate>
     </main>
   );
 }
 
-function DropWorkspace({ dropKey }: { dropKey: string }) {
+function DropWorkspace({ dropKey, locked }: { dropKey: string; locked: boolean }) {
   const [listing, setListing] = useState<Listing | null>(null);
   const [status, setStatus] = useState<{ kind: "idle" | "busy" | "ok" | "bad"; text: string }>({
     kind: "idle",
@@ -92,10 +92,11 @@ function DropWorkspace({ dropKey }: { dropKey: string }) {
   const fileInput = useRef<HTMLInputElement | null>(null);
 
   const refresh = useCallback(async () => {
+    if (locked) return; /* no key yet: the folder is never asked for */
     const r = await listFiles({ data: { key: dropKey } });
     if (r.ok) setListing(r);
     else setStatus({ kind: "bad", text: r.error });
-  }, [dropKey]);
+  }, [dropKey, locked]);
 
   useEffect(() => {
     void refresh();
@@ -129,7 +130,7 @@ function DropWorkspace({ dropKey }: { dropKey: string }) {
   }
 
   async function sendFiles(files: File[]) {
-    if (!files.length) return;
+    if (locked || !files.length) return;
     const done: string[] = [];
     for (const file of files) {
       setStatus({ kind: "busy", text: `Sending ${file.name}…` });
@@ -146,6 +147,7 @@ function DropWorkspace({ dropKey }: { dropKey: string }) {
   }
 
   async function sendPaste() {
+    if (locked) return;
     const text = pasteText.trim();
     if (!text) {
       setStatus({ kind: "bad", text: "The text box is empty." });
@@ -177,7 +179,7 @@ function DropWorkspace({ dropKey }: { dropKey: string }) {
   }
 
   return (
-    <>
+    <fieldset disabled={locked} className="m-0 min-w-0 border-0 p-0">
       {/* ---------------------------------------------------------- upload */}
       <section className="mt-6">
         <div
@@ -277,7 +279,13 @@ function DropWorkspace({ dropKey }: { dropKey: string }) {
           </p>
         ) : null}
 
-        <ul className="mt-3 divide-y divide-slate-200 rounded-2xl border border-slate-200">
+        {locked ? (
+          <p className="mt-3 rounded-2xl border border-slate-200 px-4 py-6 text-sm text-slate-500">
+            Hidden until the DropKey is accepted.
+          </p>
+        ) : null}
+
+        <ul className={`mt-3 divide-y divide-slate-200 rounded-2xl border border-slate-200 ${locked ? "hidden" : ""}`}>
           {listing && listing.files.length === 0 ? (
             <li className="px-4 py-6 text-sm text-slate-500">Nothing here yet.</li>
           ) : null}
@@ -305,6 +313,6 @@ function DropWorkspace({ dropKey }: { dropKey: string }) {
           nothing and the server refuses every request.
         </p>
       </section>
-    </>
+    </fieldset>
   );
 }
